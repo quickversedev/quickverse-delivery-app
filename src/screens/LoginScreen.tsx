@@ -5,12 +5,16 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  ScrollView,
+  Image,
 } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
+import { AuthError } from '../services/auth.service';
+import { FONT_FAMILY } from '../theme/typography';
+import images from '../assets/images';
 
 interface LoginScreenProps {
   navigation: any;
@@ -19,79 +23,120 @@ interface LoginScreenProps {
 const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [fieldError, setFieldError] = useState('');
+  const [apiError, setApiError] = useState('');
   const { login } = useAuth();
 
+  const digitPhone = phoneNumber.replace(/\D/g, '').slice(0, 10);
+  const isPhoneValid = /^[0-9]{10}$/.test(digitPhone);
+
+  const toAuthMessage = (error: unknown): string => {
+    const err = error as Partial<AuthError>;
+    if (err?.isCancelled) {
+      return 'Request was cancelled. Please try again.';
+    }
+    if (typeof err?.message === 'string' && err.message.trim().length > 0) {
+      return err.message;
+    }
+    return 'Failed to send OTP. Please try again.';
+  };
+
+  const handlePhoneChange = (value: string) => {
+    const cleaned = value.replace(/\D/g, '').slice(0, 10);
+    setPhoneNumber(cleaned);
+    if (fieldError) {
+      setFieldError('');
+    }
+    if (apiError) {
+      setApiError('');
+    }
+  };
+
   const handleLogin = async () => {
-    if (!phoneNumber.trim()) {
-      Alert.alert('Error', 'Please enter your phone number');
+    if (!digitPhone) {
+      setFieldError('Please enter your phone number.');
       return;
     }
 
-    // Basic phone number validation
-    const phoneRegex = /^[+]?[\d\s\-\(\)]{10,}$/;
-    if (!phoneRegex.test(phoneNumber)) {
-      Alert.alert('Error', 'Please enter a valid phone number');
+    if (!isPhoneValid) {
+      setFieldError('Please enter a valid 10-digit phone number.');
       return;
     }
 
     try {
       setIsLoading(true);
-      await login(phoneNumber);
+      setFieldError('');
+      setApiError('');
+      await login(digitPhone);
       navigation.navigate('OTP');
     } catch (error) {
-      Alert.alert('Error', 'Failed to send OTP. Please try again.');
+      setApiError(toAuthMessage(error));
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <KeyboardAvoidingView 
-      style={styles.container} 
+    <KeyboardAvoidingView
+      style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <View style={styles.content}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Welcome Back</Text>
-          <Text style={styles.subtitle}>
-            Enter your phone number to receive an OTP
-          </Text>
-        </View>
-
-        <View style={styles.form}>
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Phone Number</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter your phone number"
-              value={phoneNumber}
-              onChangeText={setPhoneNumber}
-              keyboardType="phone-pad"
-              autoCapitalize="none"
-              autoCorrect={false}
-              maxLength={15}
-            />
+      <View style={styles.backgroundTop} />
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={styles.scrollContent}
+      >
+        <View style={styles.card}>
+          <View style={styles.header}>
+            <Text style={styles.eyebrow}>QuickVerse Transporter</Text>
+            <Text style={styles.title}>Sign in</Text>
+            <Text style={styles.subtitle}>
+              Use your registered mobile number to continue.
+            </Text>
           </View>
 
-          <TouchableOpacity
-            style={[styles.button, isLoading && styles.buttonDisabled]}
-            onPress={handleLogin}
-            disabled={isLoading}
-          >
-            {isLoading ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <Text style={styles.buttonText}>Send OTP</Text>
-            )}
-          </TouchableOpacity>
-        </View>
+          <View style={styles.form}>
+            <Text style={styles.label}>Mobile Number</Text>
+            <View style={styles.inputRow}>
+              <Text style={styles.countryCode}>+91</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Enter 10-digit number"
+                placeholderTextColor="#8B97A8"
+                value={phoneNumber}
+                onChangeText={handlePhoneChange}
+                keyboardType="number-pad"
+                autoCapitalize="none"
+                autoCorrect={false}
+                maxLength={10}
+              />
+            </View>
+            {!!fieldError && <Text style={styles.errorText}>{fieldError}</Text>}
+            {!!apiError && <Text style={styles.apiErrorText}>{apiError}</Text>}
 
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>
-            By continuing, you agree to our Terms of Service and Privacy Policy
-          </Text>
+            <TouchableOpacity
+              style={[
+                styles.button,
+                (!isPhoneValid || isLoading) && styles.buttonDisabled,
+              ]}
+              onPress={handleLogin}
+              disabled={isLoading || !isPhoneValid}
+            >
+              {isLoading ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.buttonText}>Send OTP</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>
+              By continuing, you agree to our Terms and Privacy Policy.
+            </Text>
+          </View>
         </View>
-      </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 };
@@ -99,57 +144,93 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F2F5FA',
   },
-  content: {
+  backgroundTop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 260,
+    backgroundColor: '#0E6DFD',
+  },
+  scrollContent: {
     flex: 1,
-    paddingHorizontal: 24,
     justifyContent: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 24,
+  },
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    paddingHorizontal: 20,
+    paddingVertical: 24,
+    shadowColor: '#0A1730',
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 8,
   },
   header: {
-    alignItems: 'center',
-    marginBottom: 48,
+    marginBottom: 26,
+  },
+  eyebrow: {
+    fontSize: 13,
+    fontFamily: FONT_FAMILY.bricolageMedium,
+    color: '#0E6DFD',
+    letterSpacing: 0.6,
+    marginBottom: 8,
   },
   title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#1A1A1A',
+    fontSize: 30,
+    fontFamily: FONT_FAMILY.bricolageBold,
+    color: '#121A2B',
     marginBottom: 8,
   },
   subtitle: {
-    fontSize: 16,
-    color: '#666666',
-    textAlign: 'center',
-    lineHeight: 24,
+    fontSize: 15,
+    fontFamily: FONT_FAMILY.outfitRegular,
+    color: '#5C6980',
+    lineHeight: 22,
   },
   form: {
-    marginBottom: 32,
-  },
-  inputContainer: {
-    marginBottom: 24,
+    marginBottom: 20,
   },
   label: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1A1A1A',
+    fontSize: 14,
+    fontFamily: FONT_FAMILY.bricolageMedium,
+    color: '#334155',
     marginBottom: 8,
   },
-  input: {
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#E0E0E0',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 16,
+    borderColor: '#D8E0EB',
+    borderRadius: 14,
+    backgroundColor: '#F8FAFD',
+    paddingHorizontal: 14,
+  },
+  countryCode: {
     fontSize: 16,
-    backgroundColor: '#F8F8F8',
-    color: '#1A1A1A',
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#121A2B',
+    marginRight: 10,
+  },
+  input: {
+    flex: 1,
+    paddingVertical: 15,
+    fontSize: 16,
+    fontFamily: FONT_FAMILY.outfitRegular,
+    color: '#121A2B',
   },
   button: {
-    backgroundColor: '#007AFF',
-    borderRadius: 12,
+    marginTop: 18,
+    backgroundColor: '#0E6DFD',
+    borderRadius: 14,
     paddingVertical: 16,
     alignItems: 'center',
-    shadowColor: '#007AFF',
+    shadowColor: '#0E6DFD',
     shadowOffset: {
       width: 0,
       height: 4,
@@ -159,26 +240,42 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   buttonDisabled: {
-    backgroundColor: '#B0B0B0',
+    backgroundColor: '#9DB9E8',
     shadowOpacity: 0,
     elevation: 0,
   },
   buttonText: {
     color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: '600',
+    fontFamily: FONT_FAMILY.outfitExtraBold,
+  },
+  errorText: {
+    marginTop: 8,
+    fontSize: 13,
+    fontFamily: FONT_FAMILY.outfitRegular,
+    color: '#C22727',
+  },
+  apiErrorText: {
+    marginTop: 8,
+    fontSize: 13,
+    fontFamily: FONT_FAMILY.outfitRegular,
+    color: '#B91C1C',
+    backgroundColor: '#FEEDEE',
+    borderWidth: 1,
+    borderColor: '#F7CBCD',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
   },
   footer: {
-    alignItems: 'center',
+    paddingTop: 8,
   },
   footerText: {
     fontSize: 12,
-    color: '#999999',
-    textAlign: 'center',
+    fontFamily: FONT_FAMILY.outfitRegular,
+    color: '#6B7280',
     lineHeight: 18,
   },
 });
 
 export default LoginScreen;
-
-

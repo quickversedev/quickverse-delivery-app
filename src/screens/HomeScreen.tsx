@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
+import { FONT_FAMILY } from '../theme/typography';
 
 interface HomeScreenProps {
   navigation: any;
@@ -21,10 +22,15 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   return (
     <View style={styles.container}>
       <View style={styles.content}>
-        <Text style={styles.title}>Welcome{user?.phoneNumber ? `, ${user.phoneNumber}` : ''}</Text>
+        <Text style={styles.title}>
+          Welcome{user?.phoneNumber ? `, ${user.phoneNumber}` : ''}
+        </Text>
         <Text style={styles.subtitle}>You are now logged in.</Text>
 
-        <TouchableOpacity style={[styles.button, styles.primaryButton]} onPress={handleGoToPartner}>
+        <TouchableOpacity
+          style={[styles.button, styles.primaryButton]}
+          onPress={handleGoToPartner}
+        >
           <Text style={styles.buttonText}>Delivery Partner</Text>
         </TouchableOpacity>
 
@@ -49,12 +55,13 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 28,
-    fontWeight: 'bold',
+    fontFamily: FONT_FAMILY.bricolageBold,
     color: '#1A1A1A',
     marginBottom: 8,
   },
   subtitle: {
     fontSize: 16,
+    fontFamily: FONT_FAMILY.outfitRegular,
     color: '#666666',
     textAlign: 'center',
     lineHeight: 24,
@@ -74,10 +81,8 @@ const styles = StyleSheet.create({
   buttonText: {
     color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: '600',
+    fontFamily: FONT_FAMILY.outfitBold,
   },
 });
 
 export default HomeScreen;
-
-

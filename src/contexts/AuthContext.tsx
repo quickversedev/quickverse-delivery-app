@@ -1,6 +1,12 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  ReactNode,
+} from 'react';
 import { TokenStorage } from '../utils/storage';
-import authService from '../services/auth.service';
+import authService, { AuthError } from '../services/auth.service';
 
 interface User {
   phoneNumber: string;
@@ -16,8 +22,8 @@ interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   login: (phoneNumber: string) => Promise<void>;
-  verifyOTP: (otp: string) => Promise<boolean>;
-  logout: () => void;
+  verifyOTP: (otp: string) => Promise<void>;
+  logout: () => Promise<void>;
   // Aligned with common patterns: signIn/signOut and exposing authData
   signIn: (token: string, phoneNumber: string) => void;
   signOut: () => void;
@@ -32,11 +38,26 @@ interface AuthProviderProps {
 }
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
+  const toAuthError = (error: unknown): AuthError => {
+    const err = error as Partial<AuthError>;
+    return {
+      status: typeof err?.status === 'number' ? err.status : 500,
+      message:
+        typeof err?.message === 'string' && err.message.trim().length > 0
+          ? err.message
+          : 'Authentication failed. Please try again.',
+      isCancelled: Boolean(err?.isCancelled),
+    };
+  };
+
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [token, setToken] = useState<string | null>(null);
   const [verificationId, setVerificationId] = useState<string | null>(null);
-  const [authData, setAuthData] = useState<AuthData>({ token: null, phoneNumber: null });
+  const [authData, setAuthData] = useState<AuthData>({
+    token: null,
+    phoneNumber: null,
+  });
 
   useEffect(() => {
     // Initialize storage and check for existing token
@@ -46,22 +67,22 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const checkAuthState = async () => {
     try {
       setIsLoading(true);
-      
+
       // Check if there's an existing token
       const hasToken = TokenStorage.hasToken();
-      
+
       if (hasToken) {
         // User has a token, consider them logged in
         const storedToken = TokenStorage.getToken();
         setToken(storedToken);
         setAuthData({ token: storedToken, phoneNumber: null });
-        
+
         // Optionally: validate token with backend here
         setUser({
           phoneNumber: 'User',
-          isVerified: true
+          isVerified: true,
         });
-        
+
         console.log('User restored from token:', storedToken);
       } else {
         // No token, user needs to login
@@ -86,27 +107,33 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setVerificationId(vId);
       setUser({ phoneNumber, isVerified: false });
     } catch (error) {
-      console.error('Login error:', error);
-      throw error;
+      throw toAuthError(error);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const verifyOTP = async (otp: string): Promise<boolean> => {
+  const verifyOTP = async (otp: string): Promise<void> => {
     try {
       setIsLoading(true);
-      if (!user?.phoneNumber || !verificationId) return false;
-      const { session } = await authService.verifyOtp(user.phoneNumber, otp, verificationId);
+      if (!user?.phoneNumber || !verificationId) {
+        throw toAuthError({
+          status: 400,
+          message: 'Phone number or verification session is missing.',
+        });
+      }
+      const { session } = await authService.verifyOtp(
+        user.phoneNumber,
+        otp,
+        verificationId,
+      );
       TokenStorage.saveToken(session.token);
       setToken(session.token);
       setUser({ phoneNumber: session.phoneNumber, isVerified: true });
       setAuthData({ token: session.token, phoneNumber: session.phoneNumber });
       setVerificationId(null);
-      return true;
     } catch (error) {
-      console.error('OTP verification error:', error);
-      return false;
+      throw toAuthError(error);
     } finally {
       setIsLoading(false);
     }
@@ -151,11 +178,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     token,
   };
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
 export const useAuth = (): AuthContextType => {

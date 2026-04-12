@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
+import { FONT_FAMILY } from '../theme/typography';
 
 const LoadingScreen: React.FC = () => {
   return (
@@ -20,10 +21,9 @@ const styles = StyleSheet.create({
   text: {
     marginTop: 16,
     fontSize: 16,
+    fontFamily: FONT_FAMILY.outfitRegular,
     color: '#666666',
   },
 });
 
 export default LoadingScreen;
-
-

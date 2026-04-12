@@ -16,6 +16,50 @@ export type AuthError = {
   isCancelled?: boolean;
 };
 
+const DEFAULT_ERROR_MESSAGE = 'Something went wrong. Please try again.';
+
+const createAuthError = (
+  status: number,
+  message: string,
+  isCancelled = false,
+): AuthError => ({
+  status,
+  message,
+  isCancelled,
+});
+
+const normalizeAuthError = (error: unknown): AuthError => {
+  const e = error as Partial<AuthError> & { code?: string };
+  const status = typeof e?.status === 'number' ? e.status : 500;
+  const isCancelled = Boolean(e?.isCancelled);
+  const rawMessage =
+    typeof e?.message === 'string' && e.message.trim().length > 0
+      ? e.message
+      : DEFAULT_ERROR_MESSAGE;
+
+  if (isCancelled) {
+    return createAuthError(status, 'Request was cancelled.', true);
+  }
+
+  if (status === 0) {
+    return createAuthError(
+      0,
+      'Network error. Please check your connection and try again.',
+    );
+  }
+
+  if (status === 408) {
+    return createAuthError(
+      408,
+      'Request timed out. Please try again in a moment.',
+    );
+  }
+
+  return createAuthError(status, rawMessage, isCancelled);
+};
+
+const toOnlyDigits = (value: string): string => value.replace(/\D/g, '');
+
 interface SendOtpResponse {
   response: {
     verificationId: string;
@@ -44,17 +88,13 @@ const BASIC_AUTH = 'Basic cXZDYXN0bGVFbnRyeTpjYSR0bGVfUGVybWl0QDAx';
 
 const sendOtp = async (phoneNumber: string): Promise<string> => {
   if (!phoneNumber || phoneNumber.trim().length === 0) {
-    throw { status: 400, message: 'Phone number is required', isCancelled: false } as AuthError;
+    throw createAuthError(400, 'Phone number is required');
   }
 
-  const digits = phoneNumber.replace(/\D/g, '');
+  const digits = toOnlyDigits(phoneNumber);
   const phoneRegex = /^[0-9]{10}$/;
   if (!phoneRegex.test(digits)) {
-    throw {
-      status: 400,
-      message: 'Please enter a valid 10-digit phone number',
-      isCancelled: false,
-    } as AuthError;
+    throw createAuthError(400, 'Please enter a valid 10-digit phone number');
   }
 
   try {
@@ -62,36 +102,35 @@ const sendOtp = async (phoneNumber: string): Promise<string> => {
       axiosInstance.post(
         '/v1/requestOtp',
         { phone: digits },
-        { headers: { Authorization: BASIC_AUTH } }
-      )
+        { headers: { Authorization: BASIC_AUTH } },
+      ),
     );
 
     if (!data?.response?.verificationId) {
-      throw {
-        status: 500,
-        message: 'Invalid response from server: verification ID not received',
-        isCancelled: false,
-      } as AuthError;
+      throw createAuthError(
+        500,
+        'Invalid response from server: verification ID not received',
+      );
     }
 
     return data.response.verificationId;
   } catch (error) {
-    const authError = error as AuthError;
+    const authError = normalizeAuthError(error);
 
     if (authError.status === 429) {
-      throw {
-        status: 429,
-        message: 'Too many OTP requests. Please wait before requesting another OTP.',
-        isCancelled: authError.isCancelled,
-      } as AuthError;
+      throw createAuthError(
+        429,
+        'Too many OTP requests. Please wait before requesting another OTP.',
+        authError.isCancelled,
+      );
     }
 
     if (authError.status === 400) {
-      throw {
-        status: 400,
-        message: authError.message || 'Invalid phone number format',
-        isCancelled: authError.isCancelled,
-      } as AuthError;
+      throw createAuthError(
+        400,
+        authError.message || 'Invalid phone number format',
+        authError.isCancelled,
+      );
     }
 
     throw authError;
@@ -101,24 +140,24 @@ const sendOtp = async (phoneNumber: string): Promise<string> => {
 const verifyOtp = async (
   phoneNumber: string,
   otp: string,
-  verificationId: string
+  verificationId: string,
 ): Promise<AuthData> => {
   if (!phoneNumber || phoneNumber.trim().length === 0) {
-    throw { status: 400, message: 'Phone number is required', isCancelled: false } as AuthError;
+    throw createAuthError(400, 'Phone number is required');
   }
   if (!otp || otp.trim().length === 0) {
-    throw { status: 400, message: 'OTP is required', isCancelled: false } as AuthError;
+    throw createAuthError(400, 'OTP is required');
   }
   if (!verificationId || verificationId.trim().length === 0) {
-    throw { status: 400, message: 'Verification ID is required', isCancelled: false } as AuthError;
+    throw createAuthError(400, 'Verification ID is required');
   }
 
   const otpRegex = /^[0-9]{4}$/;
   if (!otpRegex.test(otp)) {
-    throw { status: 400, message: 'Please enter a valid 4-digit OTP', isCancelled: false } as AuthError;
+    throw createAuthError(400, 'Please enter a valid 4-digit OTP');
   }
 
-  const digits = phoneNumber.replace(/\D/g, '');
+  const digits = toOnlyDigits(phoneNumber);
 
   try {
     const data = await apiCall<VerifyOtpResponse>(
@@ -129,23 +168,21 @@ const verifyOtp = async (
           otp: otp,
           verificationId: verificationId,
         },
-        { headers: { Authorization: BASIC_AUTH } }
-      )
+        { headers: { Authorization: BASIC_AUTH } },
+      ),
     );
 
     if (!data?.jwt) {
-      throw {
-        status: 500,
-        message: 'Invalid response from server: authentication token not received',
-        isCancelled: false,
-      } as AuthError;
+      throw createAuthError(
+        500,
+        'Invalid response from server: authentication token not received',
+      );
     }
     if (!data?.phone) {
-      throw {
-        status: 500,
-        message: 'Invalid response from server: mobile number not received',
-        isCancelled: false,
-      } as AuthError;
+      throw createAuthError(
+        500,
+        'Invalid response from server: mobile number not received',
+      );
     }
 
     return {
@@ -158,28 +195,28 @@ const verifyOtp = async (
       },
     };
   } catch (error) {
-    const authError = error as AuthError;
+    const authError = normalizeAuthError(error);
 
     if (authError.status === 401) {
-      throw {
-        status: 401,
-        message: 'Invalid OTP. Please check and try again.',
-        isCancelled: authError.isCancelled,
-      } as AuthError;
+      throw createAuthError(
+        401,
+        authError.message || 'Invalid OTP. Please check and try again.',
+        authError.isCancelled,
+      );
     }
     if (authError.status === 400) {
-      throw {
-        status: 400,
-        message: authError.message || 'Invalid OTP format',
-        isCancelled: authError.isCancelled,
-      } as AuthError;
+      throw createAuthError(
+        400,
+        authError.message || 'Invalid OTP format',
+        authError.isCancelled,
+      );
     }
     if (authError.status === 422) {
-      throw {
-        status: 422,
-        message: 'OTP has expired. Please request a new OTP.',
-        isCancelled: authError.isCancelled,
-      } as AuthError;
+      throw createAuthError(
+        422,
+        'OTP has expired. Please request a new OTP.',
+        authError.isCancelled,
+      );
     }
 
     throw authError;
@@ -192,28 +229,24 @@ const signUp = async (
   gender: string,
   email: string,
   jwt: string,
-  phoneNumber: string
+  phoneNumber: string,
 ): Promise<SignUpResponse> => {
   if (!fullName || fullName.trim().length === 0) {
-    throw { status: 400, message: 'Full name is required', isCancelled: false } as AuthError;
+    throw createAuthError(400, 'Full name is required');
   }
   if (!dob || dob.trim().length === 0) {
-    throw { status: 400, message: 'Date of birth is required', isCancelled: false } as AuthError;
+    throw createAuthError(400, 'Date of birth is required');
   }
   if (!gender || gender.trim().length === 0) {
-    throw { status: 400, message: 'Gender is required', isCancelled: false } as AuthError;
+    throw createAuthError(400, 'Gender is required');
   }
 
   const validGenders = ['MALE', 'FEMALE', 'OTHER'];
   if (!validGenders.includes(gender.toUpperCase())) {
-    throw {
-      status: 400,
-      message: 'Gender must be MALE, FEMALE, or OTHER',
-      isCancelled: false,
-    } as AuthError;
+    throw createAuthError(400, 'Gender must be MALE, FEMALE, or OTHER');
   }
 
-  const digits = phoneNumber.replace(/\D/g, '');
+  const digits = toOnlyDigits(phoneNumber);
 
   const data = await apiCall<SignUpResponse>(
     axiosInstance.post(
@@ -230,8 +263,8 @@ const signUp = async (
           Authorization: BASIC_AUTH,
           SessionKey: jwt,
         },
-      }
-    )
+      },
+    ),
   );
 
   return data;
@@ -239,7 +272,7 @@ const signUp = async (
 
 const signOut = async (): Promise<SignOutResponse> => {
   const data = await apiCall<SignOutResponse>(
-    axiosInstance.delete('/v1/logout')
+    axiosInstance.delete('/v1/logout'),
   );
   return data;
 };
@@ -252,5 +285,3 @@ const authService = {
 };
 
 export default authService;
-
-

@@ -23,11 +23,13 @@ const showToast = (message: string) => {
 };
 
 export const API_CONFIG = {
-  baseURL: 'http://prd.quickverse.in/quickVerse',
+  baseURL:
+    'https://superscientifically-revengeless-ronald.ngrok-free.dev/quickVerse',
+  // baseURL: 'http://prd.quickverse.in/quickVerse',
   timeout: 15000,
   headers: {
     'Content-Type': 'application/json',
-    'Request-Origin': 'CUSTOMER',
+    'Request-Origin': 'TRANSPORTER',
   },
 } as const;
 
@@ -74,7 +76,8 @@ const handleAxiosError = (error: any): ApiError => {
   if (axiosError.code === 'ECONNABORTED') {
     return {
       status: 408,
-      message: 'Request timed out. Please check your internet connection and try again.',
+      message:
+        'Request timed out. Please check your internet connection and try again.',
       code: 'TIMEOUT',
       isCancelled: false,
       apiEndpoint: (axiosError as any).config?.url || 'Unknown',
@@ -99,7 +102,9 @@ const handleAxiosError = (error: any): ApiError => {
     };
 
     const errorMessage =
-      responseData?.message || responseData?.error?.message || 'An error occurred';
+      responseData?.message ||
+      responseData?.error?.message ||
+      'An error occurred';
     const errorCode = responseData?.code || responseData?.error?.code || '';
 
     if (errorCode === '1047' || errorCode === '1042') {
@@ -146,7 +151,7 @@ export const createRequestWithHeaders = (
   method: 'get' | 'post' | 'put' | 'delete' | 'patch',
   url: string,
   data?: unknown,
-  extraHeaders?: Record<string, string>
+  extraHeaders?: Record<string, string>,
 ) => {
   const config: { headers?: Record<string, string> } = {};
 
