@@ -20,7 +20,8 @@
     "react-native-mmkv": "^2.12.2",
     "react-native-otp-entry": "^1.8.5",
     "react-native-safe-area-context": "^5.5.2",
-    "react-native-screens": "^4.16.0"
+    "react-native-screens": "^4.16.0",
+    "react-native-svg": "^15.15.4"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

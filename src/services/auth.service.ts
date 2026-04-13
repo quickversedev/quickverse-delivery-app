@@ -7,6 +7,7 @@ export type AuthData = {
     newUser: boolean;
     name: string;
     defaultAddressId: string;
+    deliveryPartnerId: string | null;
   };
 };
 
@@ -67,11 +68,20 @@ interface SendOtpResponse {
 }
 
 interface VerifyOtpResponse {
-  jwt: string;
-  phone: string;
-  newUser: boolean;
+  data?: {
+    jwt?: string;
+    phone?: string;
+    newUser?: boolean;
+    userName?: string;
+    defaultAddressId?: string;
+    deliveryPartnerId?: string;
+  };
+  jwt?: string;
+  phone?: string;
+  newUser?: boolean;
   userName?: string;
   defaultAddressId?: string;
+  deliveryPartnerId?: string;
 }
 
 interface SignUpResponse {
@@ -100,7 +110,7 @@ const sendOtp = async (phoneNumber: string): Promise<string> => {
   try {
     const data = await apiCall<SendOtpResponse>(
       axiosInstance.post(
-        '/v1/requestOtp',
+        'quickVerse/v1/requestOtp',
         { phone: digits },
         { headers: { Authorization: BASIC_AUTH } },
       ),
@@ -162,7 +172,7 @@ const verifyOtp = async (
   try {
     const data = await apiCall<VerifyOtpResponse>(
       axiosInstance.post(
-        '/v1/login',
+        'quickVerse/v1/login',
         {
           phone: '91' + digits,
           otp: otp,
@@ -172,13 +182,15 @@ const verifyOtp = async (
       ),
     );
 
-    if (!data?.jwt) {
+    const payload = data?.data ?? data;
+
+    if (!payload?.jwt) {
       throw createAuthError(
         500,
         'Invalid response from server: authentication token not received',
       );
     }
-    if (!data?.phone) {
+    if (!payload?.phone) {
       throw createAuthError(
         500,
         'Invalid response from server: mobile number not received',
@@ -187,11 +199,12 @@ const verifyOtp = async (
 
     return {
       session: {
-        token: data.jwt,
-        phoneNumber: data.phone,
-        newUser: data.newUser ?? false,
-        name: data?.userName || '',
-        defaultAddressId: data?.defaultAddressId || '',
+        token: payload.jwt,
+        phoneNumber: payload.phone,
+        newUser: payload.newUser ?? false,
+        name: payload?.userName || '',
+        defaultAddressId: payload?.defaultAddressId || '',
+        deliveryPartnerId: payload?.deliveryPartnerId ?? null,
       },
     };
   } catch (error) {
@@ -250,7 +263,7 @@ const signUp = async (
 
   const data = await apiCall<SignUpResponse>(
     axiosInstance.post(
-      '/v1/register/customer',
+      'quickVerse/v1/register/customer',
       {
         dob: dob,
         gender: gender.toUpperCase(),
@@ -272,7 +285,7 @@ const signUp = async (
 
 const signOut = async (): Promise<SignOutResponse> => {
   const data = await apiCall<SignOutResponse>(
-    axiosInstance.delete('/v1/logout'),
+    axiosInstance.delete('quickVerse/v1/logout'),
   );
   return data;
 };

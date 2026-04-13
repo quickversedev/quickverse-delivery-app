@@ -23,9 +23,8 @@ const showToast = (message: string) => {
 };
 
 export const API_CONFIG = {
-  baseURL:
-    'https://superscientifically-revengeless-ronald.ngrok-free.dev/quickVerse',
-  // baseURL: 'http://prd.quickverse.in/quickVerse',
+  baseURL: 'https://superscientifically-revengeless-ronald.ngrok-free.dev',
+  // baseURL: 'http://prd.quickverse.in',
   timeout: 15000,
   headers: {
     'Content-Type': 'application/json',
@@ -39,6 +38,93 @@ const axiosInstance = axios.create({
   headers: API_CONFIG.headers,
 });
 
+const isDev = typeof __DEV__ !== 'undefined' ? __DEV__ : false;
+
+const formatJsonForLog = (value: unknown) => {
+  if (value == null) {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    try {
+      return JSON.stringify(JSON.parse(value), null, 2);
+    } catch {
+      return value;
+    }
+  }
+
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+};
+
+const logApiRequest = (config: any) => {
+  if (!isDev) {
+    return config;
+  }
+
+  const method = String(config?.method || 'get').toUpperCase();
+  const url = `${config?.baseURL || API_CONFIG.baseURL || ''}${
+    config?.url || ''
+  }`;
+
+  console.log(
+    `[API REQUEST] ${method} ${url}`,
+    formatJsonForLog({
+      params: config?.params,
+      data: config?.data,
+      headers: config?.headers,
+    }),
+  );
+
+  return config;
+};
+
+const logApiResponse = (response: any) => {
+  if (!isDev) {
+    return response;
+  }
+
+  const method = String(response?.config?.method || 'get').toUpperCase();
+  const url = `${response?.config?.baseURL || API_CONFIG.baseURL || ''}${
+    response?.config?.url || ''
+  }`;
+
+  console.log(
+    `[API RESPONSE] ${method} ${url} ${response?.status || ''}`.trim(),
+    formatJsonForLog({
+      data: response?.data,
+      headers: response?.headers,
+    }),
+  );
+
+  return response;
+};
+
+const logApiError = (error: any) => {
+  if (!isDev) {
+    return Promise.reject(error);
+  }
+
+  const method = String(error?.config?.method || 'get').toUpperCase();
+  const url = `${error?.config?.baseURL || API_CONFIG.baseURL || ''}${
+    error?.config?.url || ''
+  }`;
+
+  console.log(
+    `[API ERROR] ${method} ${url} ${error?.response?.status || ''}`.trim(),
+    formatJsonForLog({
+      message: error?.message,
+      code: error?.code,
+      response: error?.response?.data,
+    }),
+  );
+
+  return Promise.reject(error);
+};
+
 // Attach Authorization header if token exists
 axiosInstance.interceptors.request.use((config: any) => {
   const token = TokenStorage.getToken();
@@ -47,8 +133,10 @@ axiosInstance.interceptors.request.use((config: any) => {
     headers.Authorization = `Bearer ${token}`;
     config.headers = headers;
   }
-  return config;
+  return logApiRequest(config);
 });
+
+axiosInstance.interceptors.response.use(logApiResponse, logApiError);
 
 const handleAxiosError = (error: any): ApiError => {
   if (!axios.isAxiosError(error)) {

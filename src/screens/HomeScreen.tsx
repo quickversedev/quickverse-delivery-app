@@ -1,42 +1,65 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { FONT_FAMILY } from '../theme/typography';
 
-interface HomeScreenProps {
-  navigation: any;
-}
+const HomeScreen: React.FC = () => {
+  const { partnerProfile, isPartnerLoading } = useAuth();
 
-const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
-  const { user, logout } = useAuth();
-
-  const handleGoToPartner = () => {
-    navigation.navigate('Partner');
-  };
-
-  const handleLogout = () => {
-    logout();
-    // Auth state change will switch navigator to Auth stack
-  };
+  const partnerName = partnerProfile?.name || 'Delivery Partner';
+  const stats = [
+    {
+      label: 'Total Delivered Orders',
+      value: String(partnerProfile?.totalOrders ?? 0),
+      accent: '#0E6DFD',
+    },
+    {
+      label: 'Completed Orders',
+      value: String(partnerProfile?.orderSuccess ?? 0),
+      accent: '#16A34A',
+    },
+    {
+      label: 'Failed Orders',
+      value: String(partnerProfile?.orderFailed ?? 0),
+      accent: '#DC2626',
+    },
+    {
+      label: 'Earnings',
+      value:
+        typeof partnerProfile?.earnings === 'number'
+          ? `₹${partnerProfile.earnings}`
+          : 'Coming soon',
+      accent: '#F59E0B',
+    },
+  ];
 
   return (
     <View style={styles.container}>
+      <View style={styles.backgroundGlowOne} />
+      <View style={styles.backgroundGlowTwo} />
       <View style={styles.content}>
-        <Text style={styles.title}>
-          Welcome{user?.phoneNumber ? `, ${user.phoneNumber}` : ''}
+        <Text style={styles.eyebrow}>Transporter account</Text>
+        <Text style={styles.title}>Welcome back {partnerName}</Text>
+        <Text style={styles.subtitle}>
+          Here is your delivery summary for today.
         </Text>
-        <Text style={styles.subtitle}>You are now logged in.</Text>
 
-        <TouchableOpacity
-          style={[styles.button, styles.primaryButton]}
-          onPress={handleGoToPartner}
-        >
-          <Text style={styles.buttonText}>Delivery Partner</Text>
-        </TouchableOpacity>
+        <View style={styles.grid}>
+          {stats.map(stat => (
+            <View key={stat.label} style={styles.statCard}>
+              <View style={[styles.statAccent, { backgroundColor: stat.accent }]} />
+              <Text style={styles.statLabel}>{stat.label}</Text>
+              <Text style={styles.statValue}>{stat.value}</Text>
+            </View>
+          ))}
+        </View>
 
-        <TouchableOpacity style={styles.button} onPress={handleLogout}>
-          <Text style={styles.buttonText}>Logout</Text>
-        </TouchableOpacity>
+        <View style={styles.sectionCard}>
+          <Text style={styles.sectionTitle}>Ongoing Orders</Text>
+          <Text style={styles.sectionText}>
+            We will render the ongoing orders list here next.
+          </Text>
+        </View>
       </View>
     </View>
   );
@@ -45,43 +68,109 @@ const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F2F5FA',
+  },
+  backgroundGlowOne: {
+    position: 'absolute',
+    top: -60,
+    right: -40,
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: 'rgba(14, 109, 253, 0.14)',
+  },
+  backgroundGlowTwo: {
+    position: 'absolute',
+    bottom: 50,
+    left: -70,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: 'rgba(17, 24, 39, 0.05)',
   },
   content: {
     flex: 1,
     paddingHorizontal: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
+    paddingTop: 24,
+  },
+  eyebrow: {
+    fontSize: 13,
+    fontFamily: FONT_FAMILY.bricolageMedium,
+    color: '#0E6DFD',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    marginBottom: 8,
   },
   title: {
     fontSize: 28,
     fontFamily: FONT_FAMILY.bricolageBold,
-    color: '#1A1A1A',
-    marginBottom: 8,
+    color: '#121A2B',
+    marginBottom: 10,
   },
   subtitle: {
     fontSize: 16,
     fontFamily: FONT_FAMILY.outfitRegular,
-    color: '#666666',
-    textAlign: 'center',
+    color: '#5C6980',
     lineHeight: 24,
-    marginBottom: 32,
+    marginBottom: 18,
   },
-  button: {
-    backgroundColor: '#FF3B30',
-    borderRadius: 12,
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    alignItems: 'center',
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    marginTop: 8,
   },
-  primaryButton: {
-    backgroundColor: '#007AFF',
+  statCard: {
+    width: '48%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 22,
+    padding: 16,
+    marginBottom: 14,
+    shadowColor: '#0A1730',
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
+  },
+  statAccent: {
+    width: 38,
+    height: 4,
+    borderRadius: 999,
     marginBottom: 12,
   },
-  buttonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontFamily: FONT_FAMILY.outfitBold,
+  statLabel: {
+    fontSize: 13,
+    fontFamily: FONT_FAMILY.outfitMedium,
+    color: '#5C6980',
+    marginBottom: 8,
+  },
+  statValue: {
+    fontSize: 24,
+    fontFamily: FONT_FAMILY.bricolageBold,
+    color: '#121A2B',
+  },
+  sectionCard: {
+    marginTop: 8,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 22,
+    padding: 18,
+    shadowColor: '#0A1730',
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontFamily: FONT_FAMILY.bricolageBold,
+    color: '#121A2B',
+    marginBottom: 8,
+  },
+  sectionText: {
+    fontSize: 14,
+    fontFamily: FONT_FAMILY.outfitRegular,
+    color: '#5C6980',
+    lineHeight: 20,
   },
 });
 
