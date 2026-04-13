@@ -1,10 +1,10 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
-import { useAuth } from '../contexts/AuthContext';
+import useAuthStore from '../hooks/useAuthStore';
 import { TokenStorage } from '../utils/storage';
 
 const TokenDisplay: React.FC = () => {
-  const { token, user } = useAuth();
+  const { token, user } = useAuthStore();
 
   const handleShowStorageInfo = () => {
     const storedToken = TokenStorage.getToken();
@@ -13,9 +13,9 @@ const TokenDisplay: React.FC = () => {
     Alert.alert(
       'Storage Information',
       `Stored Token: ${storedToken || 'None'}\n\n` +
-      `Current User: ${JSON.stringify(user, null, 2)}\n\n` +
-      `Has Token: ${hasToken}`,
-      [{ text: 'OK' }]
+        `Current User: ${JSON.stringify(user, null, 2)}\n\n` +
+        `Has Token: ${hasToken}`,
+      [{ text: 'OK' }],
     );
   };
 
@@ -33,7 +33,7 @@ const TokenDisplay: React.FC = () => {
             Alert.alert('Success', 'Token cleared successfully');
           },
         },
-      ]
+      ],
     );
   };
 
@@ -44,7 +44,7 @@ const TokenDisplay: React.FC = () => {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Token Information</Text>
-      
+
       <View style={styles.tokenInfo}>
         <Text style={styles.label}>Current Token:</Text>
         <Text style={styles.token} numberOfLines={2}>
@@ -63,9 +63,14 @@ const TokenDisplay: React.FC = () => {
         <TouchableOpacity style={styles.button} onPress={handleShowStorageInfo}>
           <Text style={styles.buttonText}>Show Storage Info</Text>
         </TouchableOpacity>
-        
-        <TouchableOpacity style={[styles.button, styles.clearButton]} onPress={handleClearStorage}>
-          <Text style={[styles.buttonText, styles.clearButtonText]}>Clear Storage</Text>
+
+        <TouchableOpacity
+          style={[styles.button, styles.clearButton]}
+          onPress={handleClearStorage}
+        >
+          <Text style={[styles.buttonText, styles.clearButtonText]}>
+            Clear Storage
+          </Text>
         </TouchableOpacity>
       </View>
     </View>

@@ -11,7 +11,7 @@ import {
   ScrollView,
   Image,
 } from 'react-native';
-import { useAuth } from '../contexts/AuthContext';
+import useAuthStore from '../hooks/useAuthStore';
 import { AuthError } from '../services/auth.service';
 import { FONT_FAMILY } from '../theme/typography';
 import images from '../assets/images';
@@ -25,7 +25,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [fieldError, setFieldError] = useState('');
   const [apiError, setApiError] = useState('');
-  const { login } = useAuth();
+  const { login } = useAuthStore();
 
   const digitPhone = phoneNumber.replace(/\D/g, '').slice(0, 10);
   const isPhoneValid = /^[0-9]{10}$/.test(digitPhone);

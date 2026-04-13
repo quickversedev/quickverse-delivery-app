@@ -9,7 +9,11 @@ export const initializeStorage = (): void => {
   if (!mmkv) {
     try {
       mmkv = new MMKV();
-    } catch {
+    } catch (error) {
+      console.warn(
+        'MMKV storage failed to initialize. Falling back to in-memory storage.',
+        error,
+      );
       mmkv = null;
     }
   }
@@ -25,6 +29,8 @@ const getStorage = (): MMKV | null => {
 const AUTH_TOKEN_KEY = '@AuthToken';
 const PARTNER_ACTIVE_KEY = '@PartnerActive';
 const PARTNER_ID_KEY = '@PartnerId';
+const PHONE_NUMBER_KEY = '@PhoneNumber';
+const IS_LOGGED_IN_KEY = '@IsLoggedIn';
 
 export const TokenStorage = {
   saveToken(token: string): void {
@@ -55,7 +61,7 @@ export const TokenStorage = {
   hasToken(): boolean {
     const storage = getStorage();
     if (storage) {
-      return storage.contains(AUTH_TOKEN_KEY);
+      return storage.getString(AUTH_TOKEN_KEY) != null;
     }
     return inMemoryToken != null;
   },
@@ -92,6 +98,56 @@ export const TokenStorage = {
     }
     inMemoryPartnerId = null;
   },
+
+  savePhoneNumber(phoneNumber: string | null): void {
+    const storage = getStorage();
+    if (!phoneNumber) {
+      if (storage) {
+        storage.delete(PHONE_NUMBER_KEY);
+      }
+      return;
+    }
+    if (storage) {
+      storage.set(PHONE_NUMBER_KEY, phoneNumber);
+    }
+  },
+
+  getPhoneNumber(): string | null {
+    const storage = getStorage();
+    if (storage) {
+      return storage.getString(PHONE_NUMBER_KEY) ?? null;
+    }
+    return null;
+  },
+
+  clearPhoneNumber(): void {
+    const storage = getStorage();
+    if (storage) {
+      storage.delete(PHONE_NUMBER_KEY);
+    }
+  },
+
+  setLoggedIn(value: boolean): void {
+    const storage = getStorage();
+    if (storage) {
+      storage.set(IS_LOGGED_IN_KEY, value);
+    }
+  },
+
+  isLoggedIn(): boolean {
+    const storage = getStorage();
+    if (storage) {
+      return storage.getBoolean(IS_LOGGED_IN_KEY) ?? false;
+    }
+    return false;
+  },
+
+  clearLoggedIn(): void {
+    const storage = getStorage();
+    if (storage) {
+      storage.delete(IS_LOGGED_IN_KEY);
+    }
+  },
 };
 
 export const PartnerStatusStorage = {
@@ -115,5 +171,3 @@ export const PartnerStatusStorage = {
     }
   },
 };
-
-

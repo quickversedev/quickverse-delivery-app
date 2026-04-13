@@ -8,6 +8,7 @@ export type DeliveryPartnerProfile = {
   orderSuccess: number;
   orderFailed: number;
   earnings: number | null;
+  isOnline?: boolean;
 };
 
 type DeliveryPartnerApiResponse = {
@@ -27,9 +28,11 @@ type DeliveryPartnerApiResponse = {
     orderFailed?: number;
     earnings?: number;
     totalEarnings?: number;
+    isOnline?: boolean;
   };
   id?: string;
   deliveryPartnerId?: string;
+  isOnline?: boolean;
   name?: string;
   fullName?: string;
   partnerName?: string;
@@ -74,6 +77,7 @@ const normalizePartnerProfile = (
         : typeof payload?.totalEarnings === 'number'
         ? payload.totalEarnings
         : null,
+    isOnline: Boolean(payload?.isOnline ?? false),
   };
 };
 
@@ -89,8 +93,21 @@ const getDeliveryPartnerById = async (
   return normalizePartnerProfile(data, partnerId);
 };
 
+const toggleDeliveryPartnerOnlineStatus = async (
+  partnerId: string,
+  isOnline: boolean,
+): Promise<void> => {
+  await apiCall(
+    axiosInstance.patch(`/v1/delivery-partner/${partnerId}/online`, null, {
+      params: { isOnline },
+      validateStatus: status => status >= 200 && status < 400,
+    }),
+  );
+};
+
 const deliveryPartnerService = {
   getDeliveryPartnerById,
+  toggleDeliveryPartnerOnlineStatus,
 };
 
 export default deliveryPartnerService;

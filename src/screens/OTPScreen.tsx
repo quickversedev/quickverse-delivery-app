@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
   ScrollView,
 } from 'react-native';
-import { useAuth } from '../contexts/AuthContext';
+import useAuthStore from '../hooks/useAuthStore';
 import { OtpInput } from 'react-native-otp-entry';
 import { AuthError } from '../services/auth.service';
 import { FONT_FAMILY } from '../theme/typography';
@@ -25,7 +25,7 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ navigation }) => {
   const [canResend, setCanResend] = useState(false);
   const [errorText, setErrorText] = useState('');
   const [infoText, setInfoText] = useState('');
-  const { user, verifyOTP, login } = useAuth();
+  const { user, verifyOTP, login } = useAuthStore();
 
   const isOtpValid = /^[0-9]{4}$/.test(otp);
 

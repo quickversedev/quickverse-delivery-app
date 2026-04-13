@@ -24,6 +24,7 @@ const showToast = (message: string) => {
 
 export const API_CONFIG = {
   baseURL: 'https://superscientifically-revengeless-ronald.ngrok-free.dev',
+  // baseURL: 'https://3fcb-27-60-14-236.ngrok-free.app',
   // baseURL: 'http://prd.quickverse.in',
   timeout: 15000,
   headers: {

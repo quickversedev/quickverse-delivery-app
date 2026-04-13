@@ -30,6 +30,7 @@ interface AuthContextType {
   isLoading: boolean;
   isBootstrapping: boolean;
   isPartnerLoading: boolean;
+  isLoggedIn: boolean;
   login: (phoneNumber: string) => Promise<void>;
   verifyOTP: (otp: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -73,6 +74,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [partnerProfile, setPartnerProfile] = useState<PartnerProfile | null>(
     null,
   );
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [authData, setAuthData] = useState<AuthData>({
     token: null,
     phoneNumber: null,
@@ -124,16 +126,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (hasToken) {
         // User has a token, consider them logged in
         const storedToken = TokenStorage.getToken();
+        const storedPhoneNumber = TokenStorage.getPhoneNumber();
         setToken(storedToken);
         setAuthData({
           token: storedToken,
-          phoneNumber: null,
+          phoneNumber: storedPhoneNumber,
           partnerId: storedPartnerId,
         });
+        setIsLoggedIn(true);
 
-        // Optionally: validate token with backend here
         setUser({
-          phoneNumber: 'User',
+          phoneNumber: storedPhoneNumber || 'User',
           isVerified: true,
           deliveryPartnerId: storedPartnerId,
         });
@@ -146,6 +149,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
         console.log('User restored from token:', storedToken);
       } else {
+        setIsLoggedIn(false);
         // No token, user needs to login
         setUser(null);
         setToken(null);
@@ -193,7 +197,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       );
       TokenStorage.saveToken(session.token);
       TokenStorage.savePartnerId(session.deliveryPartnerId);
+      TokenStorage.savePhoneNumber(session.phoneNumber);
+      TokenStorage.setLoggedIn(true);
       setToken(session.token);
+      setIsLoggedIn(true);
       setUser({
         phoneNumber: session.phoneNumber,
         isVerified: true,
@@ -220,8 +227,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     } finally {
       TokenStorage.clearToken();
       TokenStorage.clearPartnerId();
+      TokenStorage.clearPhoneNumber();
+      TokenStorage.clearLoggedIn();
       setUser(null);
       setToken(null);
+      setIsLoggedIn(false);
       setVerificationId(null);
       setAuthData({ token: null, phoneNumber: null, partnerId: null });
       setPartnerProfile(null);
@@ -239,7 +249,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   ) => {
     TokenStorage.saveToken(newToken);
     TokenStorage.savePartnerId(partnerId);
+    TokenStorage.savePhoneNumber(phoneNumber);
+    TokenStorage.setLoggedIn(true);
     setToken(newToken);
+    setIsLoggedIn(true);
     setUser({ phoneNumber, isVerified: true, deliveryPartnerId: partnerId });
     setAuthData({ token: newToken, phoneNumber, partnerId });
     loadPartnerProfile(partnerId).catch(() => undefined);
@@ -253,6 +266,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     user,
     isLoading,
     isBootstrapping,
+    isPartnerLoading,
+    isLoggedIn,
     login,
     verifyOTP,
     logout,
@@ -261,7 +276,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     authData,
     token,
     partnerProfile,
-    isPartnerLoading,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
