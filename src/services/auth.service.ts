@@ -110,7 +110,7 @@ const sendOtp = async (phoneNumber: string): Promise<string> => {
   try {
     const data = await apiCall<SendOtpResponse>(
       axiosInstance.post(
-        'quickVerse/v1/requestOtp',
+        '/quickVerse/v1/requestOtp',
         { phone: digits },
         { headers: { Authorization: BASIC_AUTH } },
       ),
@@ -172,7 +172,7 @@ const verifyOtp = async (
   try {
     const data = await apiCall<VerifyOtpResponse>(
       axiosInstance.post(
-        'quickVerse/v1/login',
+        '/quickVerse/v1/login',
         {
           phone: '91' + digits,
           otp: otp,
@@ -263,7 +263,7 @@ const signUp = async (
 
   const data = await apiCall<SignUpResponse>(
     axiosInstance.post(
-      'quickVerse/v1/register/customer',
+      '/quickVerse/v1/register/customer',
       {
         dob: dob,
         gender: gender.toUpperCase(),
@@ -285,7 +285,7 @@ const signUp = async (
 
 const signOut = async (): Promise<SignOutResponse> => {
   const data = await apiCall<SignOutResponse>(
-    axiosInstance.delete('quickVerse/v1/logout'),
+    axiosInstance.delete('/quickVerse/v1/logout'),
   );
   return data;
 };

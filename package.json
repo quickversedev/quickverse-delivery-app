@@ -3,18 +3,20 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "android": "react-native run-android",
+    "android": "react-native run-android --port 8085",
     "ios": "react-native run-ios",
     "lint": "eslint .",
-    "start": "react-native start",
+    "start": "react-native start --port 8085",
     "test": "jest"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^3.0.2",
+    "@react-native-community/geolocation": "^3.4.0",
     "@react-native/new-app-screen": "0.81.4",
     "@react-navigation/native": "^7.1.17",
     "@react-navigation/native-stack": "^7.3.26",
     "axios": "^1.12.2",
+    "lucide-react-native": "^1.14.0",
     "react": "19.1.0",
     "react-native": "0.81.4",
     "react-native-gesture-handler": "^2.28.0",

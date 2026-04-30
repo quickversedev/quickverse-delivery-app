@@ -2,10 +2,16 @@ import { MMKV } from 'react-native-mmkv';
 
 // Lazily create a single MMKV instance; provide safe in-memory fallback
 let mmkv: MMKV | null = null;
+let didAttemptStorageInit = false;
 let inMemoryToken: string | null = null;
 let inMemoryPartnerId: string | null = null;
 
 export const initializeStorage = (): void => {
+  if (didAttemptStorageInit) {
+    return;
+  }
+
+  didAttemptStorageInit = true;
   if (!mmkv) {
     try {
       mmkv = new MMKV();

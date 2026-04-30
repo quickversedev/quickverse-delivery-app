@@ -8,6 +8,7 @@ import ProfileScreen from '../screens/ProfileScreen';
 import LoadingScreen from '../components/LoadingScreen';
 import useAuthStore from '../hooks/useAuthStore';
 import { rehydrateAuthStore } from '../store/authStore';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 type AuthStackParamList = {
   Login: undefined;
