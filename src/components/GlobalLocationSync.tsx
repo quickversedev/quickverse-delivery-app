@@ -4,7 +4,7 @@ import useAuthStore from '../hooks/useAuthStore';
 import deliveryPartnerService from '../services/delivery-partner.service';
 import { getBestEffortCurrentLocation } from '../utils/location';
 
-const LOCATION_SYNC_INTERVAL_MS = 4 * 60 * 1000;
+const LOCATION_SYNC_INTERVAL_MS = 2 * 60 * 1000;
 
 const GlobalLocationSync: React.FC = () => {
   const { authData, isLoggedIn, isBootstrapping } = useAuthStore();

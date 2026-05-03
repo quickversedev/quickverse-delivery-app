@@ -24,8 +24,8 @@ const showToast = (message: string) => {
 
 export const API_CONFIG = {
   // baseURL: 'https://superscientifically-revengeless-ronald.ngrok-free.dev',
-  // baseURL: 'http://10.0.2.2:8081',
-  baseURL: 'http://prd.quickverse.in',
+  // baseURL: 'http://10.0.2.2:8080',
+  // baseURL: 'http://prd.quickverse.in',
   timeout: 15000,
   headers: {
     'Content-Type': 'application/json',
@@ -225,7 +225,7 @@ export const apiCall = async <T>(promise: Promise<any>): Promise<T> => {
     const response = await promise;
     return response.data;
   } catch (error) {
-    console.error('error caught in Axios Config', error);
+    console.warn('error caught in Axios Config', error);
     throw handleAxiosError(error as any);
   }
 };

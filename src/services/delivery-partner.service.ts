@@ -447,6 +447,7 @@ const getAssignedOrdersByPartnerId = async (
 
   const data = await apiCall<any>(
     axiosInstance.get(`/v1/order-master/delivery-partner/${partnerId}`, {
+      params: { size: 200 },
       headers: {
         SessionKey: sessionKey || '',
         'Request-Origin': 'CAPTAIN',
@@ -454,6 +455,10 @@ const getAssignedOrdersByPartnerId = async (
       validateStatus: status => status >= 200 && status < 400,
     }),
   );
+
+  if (Array.isArray(data?.content)) {
+    return data.content.map(normalizePartnerOrder);
+  }
 
   if (Array.isArray(data)) {
     return data.map(normalizePartnerOrder);

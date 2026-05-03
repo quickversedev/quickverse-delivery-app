@@ -32,6 +32,11 @@ import {
   Clock,
   ChevronRight,
   Copy,
+  CircleDot,
+  Circle,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react-native';
 
 type AppStackParamList = {
@@ -60,6 +65,9 @@ const HomeScreen: React.FC = () => {
   );
   const [activeTab, setActiveTab] = useState<'dashboard' | 'orders'>('orders');
   const [isLogoutModalVisible, setIsLogoutModalVisible] = useState(false);
+  const [orderStatusFilter, setOrderStatusFilter] = useState<string>('all');
+  const [timeRangeFilter, setTimeRangeFilter] = useState<'all' | 'today' | 'week' | 'month'>('all');
+  const [expandedOrderIds, setExpandedOrderIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (typeof partnerProfile?.isOnline === 'boolean') {
@@ -107,9 +115,8 @@ const HomeScreen: React.FC = () => {
       }
     });
 
-    return Array.from(latestByOrderId.values()).sort(
-      (a, b) => getOrderTimestamp(b) - getOrderTimestamp(a),
-    );
+    return Array.from(latestByOrderId.values())
+      .sort((a, b) => getOrderTimestamp(b) - getOrderTimestamp(a));
   };
 
   const fetchCurrentLocation = async () => {
@@ -134,6 +141,9 @@ const HomeScreen: React.FC = () => {
     try {
       const response =
         await deliveryPartnerService.getAssignedOrdersByPartnerId(partnerId);
+      if (__DEV__) {
+        console.log('[DEBUG ORDERS]', JSON.stringify(response, null, 2));
+      }
       setOrders(getUniqueLatestOrders(response));
     } catch (error) {
       console.error('Fetch assigned orders failed', error);
@@ -197,6 +207,62 @@ const HomeScreen: React.FC = () => {
   };
 
   const partnerName = partnerProfile?.name || 'Delivery Partner';
+
+  const getOrderEpochMs = (order: DeliveryPartnerOrder): number => {
+    const fromCreatedAt = Number(order.createdAt);
+    if (Number.isFinite(fromCreatedAt) && fromCreatedAt > 0) {
+      return fromCreatedAt;
+    }
+    return getOrderTimestamp(order);
+  };
+
+  const LIVE_STATUSES = ['PARTNER_ASSIGNED', 'PARTNER_ACCEPTED', 'ACCEPTED', 'PREPARATION', 'ON_THE_WAY'];
+  const COMPLETED_INNER_STATES = ['COMPLETED', 'DELIVERED', 'CANCELLED', 'REJECTED'];
+  const isOrderLive = (o: DeliveryPartnerOrder) => {
+    const innerState = o.orderDetails?.state?.toUpperCase() ?? '';
+    if (COMPLETED_INNER_STATES.includes(innerState)) {
+      return false;
+    }
+    return LIVE_STATUSES.includes(o.orderStatus?.toUpperCase() ?? '');
+  };
+  const liveOrders = orders.filter(isOrderLive);
+  const liveOrderIds = new Set(liveOrders.map(o => o.id || o.orderId));
+  const pastOrders = orders.filter(o => !liveOrderIds.has(o.id || o.orderId));
+
+  const getTimeRangeCutoff = (range: 'today' | 'week' | 'month'): number => {
+    const now = new Date();
+    if (range === 'today') {
+      return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    }
+    if (range === 'week') {
+      const day = now.getDay();
+      const diff = day === 0 ? 6 : day - 1;
+      return new Date(now.getFullYear(), now.getMonth(), now.getDate() - diff).getTime();
+    }
+    return new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  };
+
+  const timeFilteredOrders =
+    timeRangeFilter === 'all'
+      ? pastOrders
+      : pastOrders.filter(o => getOrderEpochMs(o) >= getTimeRangeCutoff(timeRangeFilter));
+
+  const availableStatuses = Array.from(
+    new Set(timeFilteredOrders.map(o => o.orderStatus?.toUpperCase() ?? 'UNKNOWN')),
+  ).sort();
+
+  const filteredOrders =
+    orderStatusFilter === 'all'
+      ? timeFilteredOrders
+      : timeFilteredOrders.filter(
+          o => (o.orderStatus?.toUpperCase() ?? '') === orderStatusFilter,
+        );
+
+  const formatStatusLabel = (status: string) =>
+    status
+      .split('_')
+      .map(w => w.charAt(0) + w.slice(1).toLowerCase())
+      .join(' ');
 
   const handleLogoutPress = () => {
     setIsLogoutModalVisible(true);
@@ -326,10 +392,29 @@ const HomeScreen: React.FC = () => {
     }
   };
 
+  const toggleOrderExpanded = (orderId: string) => {
+    setExpandedOrderIds(prev => {
+      const next = new Set(prev);
+      if (next.has(orderId)) {
+        next.delete(orderId);
+      } else {
+        next.add(orderId);
+      }
+      return next;
+    });
+  };
+
   const renderOrderCard = (order: DeliveryPartnerOrder) => {
+    const cardId = order.id || order.orderId;
+    const isExpanded = expandedOrderIds.has(cardId);
     const orderDateTime = formatOrderDateTime(
       order.orderDetails?.creationTime ?? order.createdAt,
     );
+    const totalAmount = order.orderDetails?.totalAmount ?? 0;
+    const shopName = order.shopDetails?.name || 'Shop';
+    const customerName = order.orderDetails?.customerName || order.orderId || 'N/A';
+    const status = formatStatusLabel(order.orderStatus?.toUpperCase() ?? 'UNKNOWN');
+
     const shopId = order.orderDetails?.shopId ?? order.shopId;
     const paymentMethod =
       order.orderDetails?.paymentMethod ?? order.paymentMethod ?? 'N/A';
@@ -339,10 +424,7 @@ const HomeScreen: React.FC = () => {
     );
     const customerCoordinate =
       customerAddress.latitude != null && customerAddress.longitude != null
-        ? {
-            latitude: customerAddress.latitude,
-            longitude: customerAddress.longitude,
-          }
+        ? { latitude: customerAddress.latitude, longitude: customerAddress.longitude }
         : null;
     const customerDistance = formatDistance(customerCoordinate);
 
@@ -357,26 +439,15 @@ const HomeScreen: React.FC = () => {
     const shopCoordinate =
       order.shopDetails?.address?.latitude != null &&
       order.shopDetails?.address?.longitude != null
-        ? {
-            latitude: order.shopDetails.address.latitude,
-            longitude: order.shopDetails.address.longitude,
-          }
+        ? { latitude: order.shopDetails.address.latitude, longitude: order.shopDetails.address.longitude }
         : order.shopDetails?.coordinates?.latitude != null &&
           order.shopDetails?.coordinates?.longitude != null
-        ? {
-            latitude: order.shopDetails.coordinates.latitude,
-            longitude: order.shopDetails.coordinates.longitude,
-          }
-        : order.shopDetails?.latitude != null &&
-          order.shopDetails?.longitude != null
-        ? {
-            latitude: order.shopDetails.latitude,
-            longitude: order.shopDetails.longitude,
-          }
+        ? { latitude: order.shopDetails.coordinates.latitude, longitude: order.shopDetails.coordinates.longitude }
+        : order.shopDetails?.latitude != null && order.shopDetails?.longitude != null
+        ? { latitude: order.shopDetails.latitude, longitude: order.shopDetails.longitude }
         : null;
     const shopDistance = formatDistance(shopCoordinate);
-    const shopImage =
-      order.shopDetails?.banner || order.shopDetails?.logo || null;
+    const shopImage = order.shopDetails?.banner || order.shopDetails?.logo || null;
 
     const orderDescription =
       order.orderDetails?.orderDescription ||
@@ -384,139 +455,316 @@ const HomeScreen: React.FC = () => {
         ? order.orderDetails.orderItem.map(item => item.name).join(', ')
         : 'N/A');
     const itemCount = order.orderDetails?.totalItemCount ?? 0;
-    const totalAmount = order.orderDetails?.totalAmount ?? 0;
     const deliveryFee = order.orderDetails?.deliveryFee ?? 0;
     const amountExcludingDeliveryFee =
       order.orderDetails?.amountExcludingDeliveryFee ?? 0;
 
     return (
-      <View key={order.id || order.orderId} style={styles.orderCard}>
+      <TouchableOpacity
+        key={cardId}
+        style={styles.orderCard}
+        onPress={() => toggleOrderExpanded(cardId)}
+        activeOpacity={0.85}
+      >
+        {/* Collapsed header — always visible */}
         <View style={styles.orderCardTopRow}>
-          <View>
-            <Text style={styles.orderCardEyebrow}>Order</Text>
-            <Text style={styles.orderIdText}>{order.orderId || 'N/A'}</Text>
+          <View style={styles.orderCardHeaderLeft}>
+            <Text style={styles.orderIdText}>{customerName}</Text>
+            <Text style={styles.orderCardSummary}>
+              {shopName} · {formatCurrency(totalAmount)}
+            </Text>
           </View>
-          <View style={styles.orderDateWrap}>
-            <Text style={styles.orderDateLabel}>Order time</Text>
+          <View style={styles.orderCardHeaderRight}>
             <Text style={styles.orderDateValue}>
               {orderDateTime.date}
               {orderDateTime.time ? `, ${orderDateTime.time}` : ''}
             </Text>
-          </View>
-        </View>
-
-        <View style={styles.sectionBlock}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitleInline}>Shop details</Text>
-            {shopDistance ? (
-              <Text style={styles.distanceBadge}>{shopDistance}</Text>
-            ) : null}
-          </View>
-          <View style={styles.shopHeroRow}>
-            {shopImage ? (
-              <Image source={{ uri: shopImage }} style={styles.shopHeroImage} />
-            ) : (
-              <View style={styles.shopHeroFallback}>
-                <Text style={styles.shopHeroFallbackText}>SHOP</Text>
-              </View>
-            )}
-            <View style={styles.shopHeroInfo}>
-              <Text style={styles.sectionMainText}>
-                {order.shopDetails?.name || `Shop ${shopId ?? 'N/A'}`}
-              </Text>
-              {!!order.shopDetails?.category && (
-                <Text style={styles.sectionSubText}>
-                  {order.shopDetails?.category}
-                </Text>
-              )}
+            <View style={styles.orderStatusPill}>
+              <Text style={styles.orderStatusPillText}>{status}</Text>
             </View>
           </View>
-          <Text style={styles.sectionSubText}>
-            {shopAddressText || 'Address unavailable'}
-          </Text>
-          <View style={styles.quickMetaRow}>
-            <Text style={styles.quickMetaText}>
-              Open: {order.shopDetails?.openingTime || 'N/A'}
-            </Text>
-            <Text style={styles.quickMetaText}>
-              Close: {order.shopDetails?.closingTime || 'N/A'}
+          {isExpanded ? (
+            <ChevronUp size={18} color="#94A3B8" style={{ marginLeft: 4 }} />
+          ) : (
+            <ChevronDown size={18} color="#94A3B8" style={{ marginLeft: 4 }} />
+          )}
+        </View>
+
+        {/* Expanded details */}
+        {isExpanded && (
+          <>
+            <View style={styles.sectionBlock}>
+              <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionTitleInline}>Shop details</Text>
+                {shopDistance ? (
+                  <Text style={styles.distanceBadge}>{shopDistance}</Text>
+                ) : null}
+              </View>
+              <View style={styles.shopHeroRow}>
+                {shopImage ? (
+                  <Image source={{ uri: shopImage }} style={styles.shopHeroImage} />
+                ) : (
+                  <View style={styles.shopHeroFallback}>
+                    <Text style={styles.shopHeroFallbackText}>SHOP</Text>
+                  </View>
+                )}
+                <View style={styles.shopHeroInfo}>
+                  <Text style={styles.sectionMainText}>
+                    {order.shopDetails?.name || `Shop ${shopId ?? 'N/A'}`}
+                  </Text>
+                  {!!order.shopDetails?.category && (
+                    <Text style={styles.sectionSubText}>
+                      {order.shopDetails?.category}
+                    </Text>
+                  )}
+                </View>
+              </View>
+              <Text style={styles.sectionSubText}>
+                {shopAddressText || 'Address unavailable'}
+              </Text>
+              <View style={styles.quickMetaRow}>
+                <Text style={styles.quickMetaText}>
+                  Open: {order.shopDetails?.openingTime || 'N/A'}
+                </Text>
+                <Text style={styles.quickMetaText}>
+                  Close: {order.shopDetails?.closingTime || 'N/A'}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.directionButton}
+                onPress={() =>
+                  openDirections({
+                    coordinate: shopCoordinate,
+                    fallbackQuery:
+                      shopAddressText ||
+                      order.shopDetails?.name ||
+                      `Shop ${shopId ?? ''}`,
+                  })
+                }
+                activeOpacity={0.85}
+              >
+                <Text style={styles.directionButtonText}>Get Directions</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.sectionBlock}>
+              <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionTitleInline}>Customer details</Text>
+                {customerDistance ? (
+                  <Text style={styles.distanceBadge}>{customerDistance}</Text>
+                ) : null}
+              </View>
+              <Text style={styles.sectionSubText}>Phone: {customerMobile}</Text>
+              <Text style={styles.sectionSubText}>{customerAddress.text}</Text>
+              <TouchableOpacity
+                style={styles.directionButtonSecondary}
+                onPress={() =>
+                  openDirections({
+                    coordinate: customerCoordinate,
+                    fallbackQuery: customerAddress.text,
+                  })
+                }
+                activeOpacity={0.85}
+              >
+                <Text style={styles.directionButtonSecondaryText}>
+                  Get Directions
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.sectionBlock}>
+              <Text style={styles.sectionTitleInline}>Order details</Text>
+              <Text style={styles.sectionSubText}>{orderDescription}</Text>
+              <View style={styles.orderMetaRow}>
+                <Text style={styles.orderMetaLabel}>Items</Text>
+                <Text style={styles.orderMetaValue}>
+                  {itemCount > 0
+                    ? `${itemCount} item${itemCount > 1 ? 's' : ''}`
+                    : 'N/A'}
+                </Text>
+              </View>
+              <View style={styles.orderMetaRow}>
+                <Text style={styles.orderMetaLabel}>Payment</Text>
+                <Text style={styles.orderMetaValue}>{paymentMethod}</Text>
+              </View>
+              <View style={styles.orderMetaRow}>
+                <Text style={styles.orderMetaLabel}>Subtotal</Text>
+                <Text style={styles.orderMetaValue}>
+                  {formatCurrency(amountExcludingDeliveryFee)}
+                </Text>
+              </View>
+              <View style={styles.orderMetaRow}>
+                <Text style={styles.orderMetaLabel}>Delivery fee</Text>
+                <Text style={styles.orderMetaValue}>
+                  {formatCurrency(deliveryFee)}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.orderFooterRow}>
+              <Text style={styles.orderTotalLabel}>Total amount</Text>
+              <Text style={styles.orderTotalValue}>
+                {formatCurrency(totalAmount)}
+              </Text>
+            </View>
+          </>
+        )}
+      </TouchableOpacity>
+    );
+  };
+
+  const TIMELINE_STEPS = [
+    { key: 'PARTNER_ASSIGNED', label: 'Assigned' },
+    { key: 'PARTNER_ACCEPTED', label: 'Accepted' },
+    { key: 'PREPARATION', label: 'Preparing' },
+    { key: 'ON_THE_WAY', label: 'Picked Up' },
+    { key: 'DELIVERED', label: 'Delivered' },
+  ];
+
+  const getTimelineIndex = (status: string) => {
+    const idx = TIMELINE_STEPS.findIndex(s => s.key === status.toUpperCase());
+    return idx >= 0 ? idx : -1;
+  };
+
+  const renderLiveOrderCard = (order: DeliveryPartnerOrder) => {
+    const orderStatus = order.orderStatus?.toUpperCase() ?? '';
+    const currentStepIdx = getTimelineIndex(orderStatus);
+    const shopId = order.orderDetails?.shopId ?? order.shopId;
+    const paymentMethod =
+      order.orderDetails?.paymentMethod ?? order.paymentMethod ?? 'N/A';
+    const totalAmount = order.orderDetails?.totalAmount ?? 0;
+    const customerAddress = parseCustomerAddress(
+      order.orderDetails?.customerAddress ?? null,
+    );
+    const customerCoordinate =
+      customerAddress.latitude != null && customerAddress.longitude != null
+        ? { latitude: customerAddress.latitude, longitude: customerAddress.longitude }
+        : null;
+    const customerDistance = formatDistance(customerCoordinate);
+
+    const shopAddressText = [
+      order.shopDetails?.address?.address,
+      order.shopDetails?.address?.city,
+      order.shopDetails?.address?.state,
+    ]
+      .filter(Boolean)
+      .join(', ');
+    const shopCoordinate =
+      order.shopDetails?.address?.latitude != null &&
+      order.shopDetails?.address?.longitude != null
+        ? { latitude: order.shopDetails.address.latitude, longitude: order.shopDetails.address.longitude }
+        : order.shopDetails?.coordinates?.latitude != null &&
+          order.shopDetails?.coordinates?.longitude != null
+        ? { latitude: order.shopDetails.coordinates.latitude, longitude: order.shopDetails.coordinates.longitude }
+        : order.shopDetails?.latitude != null && order.shopDetails?.longitude != null
+        ? { latitude: order.shopDetails.latitude, longitude: order.shopDetails.longitude }
+        : null;
+    const shopDistance = formatDistance(shopCoordinate);
+    const shopImage = order.shopDetails?.banner || order.shopDetails?.logo || null;
+
+    const orderDateTime = formatOrderDateTime(
+      order.orderDetails?.creationTime ?? order.createdAt,
+    );
+
+    return (
+      <View key={order.id || order.orderId} style={[styles.liveCard, { marginBottom: 12 }]}>
+        <View style={styles.livePulseRow}>
+          <View style={styles.liveDot} />
+          <Text style={styles.liveLabel}>Live Order</Text>
+          <Text style={styles.liveEarningsInline}>{formatCurrency(totalAmount)}</Text>
+          <View style={styles.liveTimeBadge}>
+            <Text style={styles.liveTimeText}>
+              {orderDateTime.time || orderDateTime.date}
             </Text>
           </View>
+        </View>
+        <Text style={styles.liveOrderId}>#{order.orderId || order.id}</Text>
+
+        {/* Pickup */}
+        <View style={styles.liveLocationRow}>
+          {shopImage ? (
+            <Image source={{ uri: shopImage }} style={styles.liveLocImage} />
+          ) : (
+            <View style={styles.liveLocIconWrap}>
+              <MapPin size={16} color="#0E6DFD" />
+            </View>
+          )}
+          <View style={styles.liveLocInfo}>
+            <Text style={styles.liveLocName}>
+              {order.shopDetails?.name || `Shop ${shopId ?? 'N/A'}`}
+            </Text>
+            <Text style={styles.liveLocAddress} numberOfLines={2}>{shopAddressText || 'Address unavailable'}</Text>
+            {shopDistance ? <Text style={styles.liveLocDistance}>{shopDistance}</Text> : null}
+          </View>
           <TouchableOpacity
-            style={styles.directionButton}
-            onPress={() =>
-              openDirections({
-                coordinate: shopCoordinate,
-                fallbackQuery:
-                  shopAddressText ||
-                  order.shopDetails?.name ||
-                  `Shop ${shopId ?? ''}`,
-              })
-            }
-            activeOpacity={0.85}
+            onPress={() => openDirections({ coordinate: shopCoordinate, fallbackQuery: shopAddressText || order.shopDetails?.name || '' })}
+            style={styles.liveNavButton}
+            activeOpacity={0.8}
           >
-            <Text style={styles.directionButtonText}>Get Directions</Text>
+            <Navigation size={14} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
 
-        <View style={styles.sectionBlock}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitleInline}>Customer details</Text>
-            {customerDistance ? (
-              <Text style={styles.distanceBadge}>{customerDistance}</Text>
-            ) : null}
+        <View style={styles.liveConnector} />
+
+        {/* Drop */}
+        <View style={styles.liveLocationRow}>
+          <View style={[styles.liveLocIconWrap, { backgroundColor: '#FEF2F2' }]}>
+            <MapPin size={16} color="#EF4444" />
           </View>
-          <Text style={styles.sectionSubText}>Phone: {customerMobile}</Text>
-          <Text style={styles.sectionSubText}>{customerAddress.text}</Text>
-          <TouchableOpacity
-            style={styles.directionButtonSecondary}
-            onPress={() =>
-              openDirections({
-                coordinate: customerCoordinate,
-                fallbackQuery: customerAddress.text,
-              })
-            }
-            activeOpacity={0.85}
-          >
-            <Text style={styles.directionButtonSecondaryText}>
-              Get Directions
+          <View style={styles.liveLocInfo}>
+            <Text style={styles.liveLocName}>
+              {order.orderDetails?.customerName || 'Customer'}
             </Text>
+            <Text style={styles.liveLocAddress} numberOfLines={2}>{customerAddress.text}</Text>
+            {customerDistance ? <Text style={styles.liveLocDistance}>{customerDistance}</Text> : null}
+          </View>
+          <TouchableOpacity
+            onPress={() => openDirections({ coordinate: customerCoordinate, fallbackQuery: customerAddress.text })}
+            style={[styles.liveNavButton, { backgroundColor: '#EF4444' }]}
+            activeOpacity={0.8}
+          >
+            <Navigation size={14} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
 
-        <View style={styles.sectionBlock}>
-          <Text style={styles.sectionTitleInline}>Order details</Text>
-          <Text style={styles.sectionSubText}>{orderDescription}</Text>
-          <View style={styles.orderMetaRow}>
-            <Text style={styles.orderMetaLabel}>Items</Text>
-            <Text style={styles.orderMetaValue}>
-              {itemCount > 0
-                ? `${itemCount} item${itemCount > 1 ? 's' : ''}`
-                : 'N/A'}
-            </Text>
-          </View>
-          <View style={styles.orderMetaRow}>
-            <Text style={styles.orderMetaLabel}>Payment</Text>
-            <Text style={styles.orderMetaValue}>{paymentMethod}</Text>
-          </View>
-          <View style={styles.orderMetaRow}>
-            <Text style={styles.orderMetaLabel}>Subtotal</Text>
-            <Text style={styles.orderMetaValue}>
-              {formatCurrency(amountExcludingDeliveryFee)}
-            </Text>
-          </View>
-          <View style={styles.orderMetaRow}>
-            <Text style={styles.orderMetaLabel}>Delivery fee</Text>
-            <Text style={styles.orderMetaValue}>
-              {formatCurrency(deliveryFee)}
-            </Text>
-          </View>
-        </View>
-        <View style={styles.orderFooterRow}>
-          <Text style={styles.orderTotalLabel}>Total amount</Text>
-          <Text style={styles.orderTotalValue}>
-            {formatCurrency(totalAmount)}
-          </Text>
+        {/* Horizontal Timeline */}
+        <View style={styles.liveTimelineH}>
+          {TIMELINE_STEPS.map((step, idx) => {
+            const isCompleted = idx < currentStepIdx;
+            const isCurrent = idx === currentStepIdx;
+            const isLast = idx === TIMELINE_STEPS.length - 1;
+            return (
+              <React.Fragment key={step.key}>
+                <View style={styles.timelineStepH}>
+                  {isCompleted ? (
+                    <CheckCircle2 size={14} color="#16A34A" fill="#DCFCE7" />
+                  ) : isCurrent ? (
+                    <CircleDot size={14} color="#0E6DFD" />
+                  ) : (
+                    <Circle size={14} color="#CBD5E1" />
+                  )}
+                  <Text
+                    style={[
+                      styles.timelineLabelH,
+                      isCompleted && { color: '#16A34A' },
+                      isCurrent && { color: '#0E6DFD', fontFamily: FONT_FAMILY.outfitBold },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {step.label}
+                  </Text>
+                </View>
+                {!isLast && (
+                  <View
+                    style={[
+                      styles.timelineLineH,
+                      isCompleted && { backgroundColor: '#16A34A' },
+                    ]}
+                  />
+                )}
+              </React.Fragment>
+            );
+          })}
         </View>
       </View>
     );
@@ -712,7 +960,110 @@ const HomeScreen: React.FC = () => {
                 No orders are assigned to you right now.
               </Text>
             ) : (
-              orders.map(renderOrderCard)
+              <>
+                {liveOrders.map(order => renderLiveOrderCard(order))}
+                {pastOrders.length > 0 && (
+                  <Text style={styles.pastOrdersHeading}>Order History</Text>
+                )}
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.filterRow}
+                  contentContainerStyle={styles.filterRowContent}
+                >
+                  {([
+                    { key: 'all', label: 'All' },
+                    { key: 'today', label: 'Today' },
+                    { key: 'week', label: 'This Week' },
+                    { key: 'month', label: 'This Month' },
+                  ] as const).map(item => (
+                    <TouchableOpacity
+                      key={item.key}
+                      style={[
+                        styles.filterChip,
+                        timeRangeFilter === item.key && styles.filterChipActive,
+                      ]}
+                      onPress={() => {
+                        setTimeRangeFilter(item.key);
+                        setOrderStatusFilter('all');
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <Text
+                        style={[
+                          styles.filterChipText,
+                          timeRangeFilter === item.key && styles.filterChipTextActive,
+                        ]}
+                      >
+                        {item.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.filterRow}
+                  contentContainerStyle={styles.filterRowContent}
+                >
+                  <TouchableOpacity
+                    style={[
+                      styles.filterChip,
+                      orderStatusFilter === 'all' && styles.filterChipActive,
+                    ]}
+                    onPress={() => setOrderStatusFilter('all')}
+                    activeOpacity={0.8}
+                  >
+                    <Text
+                      style={[
+                        styles.filterChipText,
+                        orderStatusFilter === 'all' &&
+                          styles.filterChipTextActive,
+                      ]}
+                    >
+                      All ({timeFilteredOrders.length})
+                    </Text>
+                  </TouchableOpacity>
+                  {availableStatuses.map(status => {
+                    const count = timeFilteredOrders.filter(
+                      o => (o.orderStatus?.toUpperCase() ?? '') === status,
+                    ).length;
+                    return (
+                      <TouchableOpacity
+                        key={status}
+                        style={[
+                          styles.filterChip,
+                          orderStatusFilter === status &&
+                            styles.filterChipActive,
+                        ]}
+                        onPress={() =>
+                          setOrderStatusFilter(
+                            orderStatusFilter === status ? 'all' : status,
+                          )
+                        }
+                        activeOpacity={0.8}
+                      >
+                        <Text
+                          style={[
+                            styles.filterChipText,
+                            orderStatusFilter === status &&
+                              styles.filterChipTextActive,
+                          ]}
+                        >
+                          {formatStatusLabel(status)} ({count})
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+                {filteredOrders.length === 0 ? (
+                  <Text style={styles.sectionText}>
+                    No orders match this filter.
+                  </Text>
+                ) : (
+                  filteredOrders.map(renderOrderCard)
+                )}
+              </>
             )}
           </View>
         )}
@@ -898,6 +1249,32 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontFamily: FONT_FAMILY.bricolageBold,
   },
+  filterRow: {
+    marginBottom: 12,
+  },
+  filterRowContent: {
+    gap: 8,
+  },
+  filterChip: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  filterChipActive: {
+    backgroundColor: '#0E6DFD',
+    borderColor: '#0E6DFD',
+  },
+  filterChipText: {
+    fontSize: 13,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#475569',
+  },
+  filterChipTextActive: {
+    color: '#FFFFFF',
+  },
   ordersTab: {
     backgroundColor: '#FFFFFF',
     borderRadius: 22,
@@ -945,42 +1322,42 @@ const styles = StyleSheet.create({
   },
   orderCardTopRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginBottom: 14,
+    alignItems: 'center',
   },
-  orderCardEyebrow: {
-    fontSize: 11,
-    fontFamily: FONT_FAMILY.outfitBold,
-    color: '#0E6DFD',
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
+  orderCardHeaderLeft: {
+    flex: 1,
+  },
+  orderCardHeaderRight: {
+    alignItems: 'flex-end',
+    marginLeft: 8,
   },
   orderIdText: {
-    marginTop: 4,
-    fontSize: 17,
+    fontSize: 15,
     fontFamily: FONT_FAMILY.bricolageBold,
     color: '#0F172A',
   },
-  orderDateWrap: {
-    alignItems: 'flex-end',
-    maxWidth: '55%',
-    backgroundColor: '#F1F5FF',
-    borderRadius: 12,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-  },
-  orderDateLabel: {
-    fontSize: 11,
-    fontFamily: FONT_FAMILY.outfitBold,
-    color: '#1E3A8A',
+  orderCardSummary: {
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.outfitRegular,
+    color: '#64748B',
+    marginTop: 2,
   },
   orderDateValue: {
-    marginTop: 2,
-    fontSize: 12,
-    fontFamily: FONT_FAMILY.outfitExtraBold,
+    fontSize: 11,
+    fontFamily: FONT_FAMILY.outfitBold,
     color: '#0F172A',
-    textAlign: 'right',
+  },
+  orderStatusPill: {
+    backgroundColor: '#F0F6FF',
+    paddingVertical: 2,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    marginTop: 4,
+  },
+  orderStatusPillText: {
+    fontSize: 10,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#0E6DFD',
   },
   sectionBlock: {
     borderWidth: 1,
@@ -1202,6 +1579,145 @@ const styles = StyleSheet.create({
     fontFamily: FONT_FAMILY.outfitRegular,
     color: '#5C6980',
     lineHeight: 20,
+  },
+  pastOrdersHeading: {
+    fontSize: 18,
+    fontFamily: FONT_FAMILY.bricolageBold,
+    color: '#121A2B',
+    marginTop: 24,
+    marginBottom: 12,
+  },
+  liveCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 2,
+    borderColor: '#0E6DFD',
+    shadowColor: '#0E6DFD',
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 5,
+  },
+  livePulseRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  liveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#16A34A',
+    marginRight: 6,
+  },
+  liveLabel: {
+    fontSize: 13,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#16A34A',
+    flex: 1,
+  },
+  liveEarningsInline: {
+    fontSize: 15,
+    fontFamily: FONT_FAMILY.bricolageBold,
+    color: '#0F172A',
+    marginRight: 8,
+  },
+  liveTimeBadge: {
+    backgroundColor: '#F0F6FF',
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+  },
+  liveTimeText: {
+    fontSize: 11,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#0E6DFD',
+  },
+  liveOrderId: {
+    fontSize: 11,
+    fontFamily: FONT_FAMILY.outfitRegular,
+    color: '#94A3B8',
+    marginBottom: 8,
+  },
+  liveLocationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  liveLocImage: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#E2E8F0',
+  },
+  liveLocIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#EEF4FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  liveLocInfo: {
+    flex: 1,
+    marginLeft: 10,
+  },
+  liveLocName: {
+    fontSize: 14,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#0F172A',
+  },
+  liveLocAddress: {
+    fontSize: 11,
+    fontFamily: FONT_FAMILY.outfitRegular,
+    color: '#64748B',
+    marginTop: 1,
+  },
+  liveLocDistance: {
+    fontSize: 11,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#0369A1',
+    marginTop: 1,
+  },
+  liveNavButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#0E6DFD',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
+  },
+  liveConnector: {
+    width: 2,
+    height: 14,
+    backgroundColor: '#E2E8F0',
+    marginLeft: 17,
+    marginVertical: 1,
+  },
+  liveTimelineH: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  timelineStepH: {
+    alignItems: 'center',
+    gap: 3,
+  },
+  timelineLabelH: {
+    fontSize: 9,
+    fontFamily: FONT_FAMILY.outfitRegular,
+    color: '#94A3B8',
+  },
+  timelineLineH: {
+    flex: 1,
+    height: 2,
+    backgroundColor: '#E2E8F0',
+    marginHorizontal: 2,
+    marginBottom: 14,
   },
 });
 
