@@ -69,6 +69,7 @@ const HomeScreen: React.FC = () => {
   const [orderStatusFilter, setOrderStatusFilter] = useState<string>('all');
   const [timeRangeFilter, setTimeRangeFilter] = useState<'all' | 'today' | 'week' | 'month'>('all');
   const [expandedOrderIds, setExpandedOrderIds] = useState<Set<string>>(new Set());
+  const [expandedItemIds, setExpandedItemIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (typeof partnerProfile?.isOnline === 'boolean') {
@@ -400,6 +401,18 @@ const HomeScreen: React.FC = () => {
     });
   };
 
+  const toggleItemsExpanded = (orderId: string) => {
+    setExpandedItemIds(prev => {
+      const next = new Set(prev);
+      if (next.has(orderId)) {
+        next.delete(orderId);
+      } else {
+        next.add(orderId);
+      }
+      return next;
+    });
+  };
+
   const renderOrderCard = (order: DeliveryPartnerOrder) => {
     const cardId = order.id || order.orderId;
     const isExpanded = expandedOrderIds.has(cardId);
@@ -568,14 +581,31 @@ const HomeScreen: React.FC = () => {
             <View style={styles.sectionBlock}>
               <Text style={styles.sectionTitleInline}>Order details</Text>
               <Text style={styles.sectionSubText}>{orderDescription}</Text>
-              <View style={styles.orderMetaRow}>
-                <Text style={styles.orderMetaLabel}>Items</Text>
-                <Text style={styles.orderMetaValue}>
-                  {itemCount > 0
-                    ? `${itemCount} item${itemCount > 1 ? 's' : ''}`
-                    : 'N/A'}
-                </Text>
-              </View>
+              {(order.orderDetails?.orderItem?.length ?? 0) > 0 && (
+                <>
+                  <TouchableOpacity
+                    style={styles.itemsToggleRow}
+                    onPress={() => toggleItemsExpanded(cardId)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.itemsToggleText}>
+                      {itemCount} item{itemCount > 1 ? 's' : ''}
+                    </Text>
+                    {expandedItemIds.has(cardId) ? (
+                      <ChevronUp size={14} color="#0E6DFD" />
+                    ) : (
+                      <ChevronDown size={14} color="#0E6DFD" />
+                    )}
+                  </TouchableOpacity>
+                  {expandedItemIds.has(cardId) &&
+                    order.orderDetails!.orderItem.map(item => (
+                      <View key={item.id} style={styles.itemRow}>
+                        <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>
+                        <Text style={styles.itemCount}>x{item.itemCount}</Text>
+                      </View>
+                    ))}
+                </>
+              )}
               <View style={styles.orderMetaRow}>
                 <Text style={styles.orderMetaLabel}>Payment</Text>
                 <Text style={styles.orderMetaValue}>{paymentMethod}</Text>
@@ -633,9 +663,11 @@ const HomeScreen: React.FC = () => {
   };
 
   const renderLiveOrderCard = (order: DeliveryPartnerOrder) => {
+    const liveCardId = order.id || order.orderId;
     const orderStatus = order.orderStatus?.toUpperCase() ?? '';
     const currentStepIdx = getTimelineIndex(orderStatus);
     const shopId = order.orderDetails?.shopId ?? order.shopId;
+    const liveItemCount = order.orderDetails?.totalItemCount ?? 0;
     const paymentMethod =
       order.orderDetails?.paymentMethod ?? order.paymentMethod ?? 'N/A';
     const totalAmount = order.orderDetails?.totalAmount ?? 0;
@@ -740,6 +772,32 @@ const HomeScreen: React.FC = () => {
             <Navigation size={14} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
+
+        {(order.orderDetails?.orderItem?.length ?? 0) > 0 && (
+          <>
+            <TouchableOpacity
+              style={styles.itemsToggleRow}
+              onPress={() => toggleItemsExpanded(liveCardId)}
+              activeOpacity={0.7}
+            >
+              <Text style={styles.itemsToggleText}>
+                {liveItemCount} item{liveItemCount > 1 ? 's' : ''}
+              </Text>
+              {expandedItemIds.has(liveCardId) ? (
+                <ChevronUp size={14} color="#0E6DFD" />
+              ) : (
+                <ChevronDown size={14} color="#0E6DFD" />
+              )}
+            </TouchableOpacity>
+            {expandedItemIds.has(liveCardId) &&
+              order.orderDetails!.orderItem.map(item => (
+                <View key={item.id} style={styles.itemRow}>
+                  <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>
+                  <Text style={styles.itemCount}>x{item.itemCount}</Text>
+                </View>
+              ))}
+          </>
+        )}
 
         {!!order.orderDetails?.orderLink && (
           <TouchableOpacity
@@ -1459,6 +1517,42 @@ const styles = StyleSheet.create({
     color: '#0E6DFD',
     fontSize: 13,
     fontFamily: FONT_FAMILY.outfitExtraBold,
+  },
+  itemsToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    backgroundColor: '#F0F6FF',
+    borderRadius: 8,
+  },
+  itemsToggleText: {
+    fontSize: 13,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#0E6DFD',
+  },
+  itemRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  itemName: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: FONT_FAMILY.outfitRegular,
+    color: '#334155',
+    marginRight: 8,
+  },
+  itemCount: {
+    fontSize: 13,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#64748B',
   },
   orderMetaRow: {
     flexDirection: 'row',
