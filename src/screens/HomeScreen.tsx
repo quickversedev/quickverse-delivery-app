@@ -216,15 +216,10 @@ const HomeScreen: React.FC = () => {
     return getOrderTimestamp(order);
   };
 
-  const LIVE_STATUSES = ['PARTNER_ASSIGNED', 'PARTNER_ACCEPTED', 'ACCEPTED', 'PREPARATION', 'ON_THE_WAY'];
-  const COMPLETED_INNER_STATES = ['COMPLETED', 'DELIVERED', 'CANCELLED', 'REJECTED'];
-  const isOrderLive = (o: DeliveryPartnerOrder) => {
-    const innerState = o.orderDetails?.state?.toUpperCase() ?? '';
-    if (COMPLETED_INNER_STATES.includes(innerState)) {
-      return false;
-    }
-    return LIVE_STATUSES.includes(o.orderStatus?.toUpperCase() ?? '');
-  };
+  const LIVE_INNER_STATES = ['ACCEPTED', 'SHIPPED'];
+  const isOrderLive = (o: DeliveryPartnerOrder) =>
+    o.orderStatus?.toUpperCase() === 'PARTNER_ASSIGNED' &&
+    LIVE_INNER_STATES.includes(o.orderDetails?.state?.toUpperCase() ?? '');
   const liveOrders = orders.filter(isOrderLive);
   const liveOrderIds = new Set(liveOrders.map(o => o.id || o.orderId));
   const pastOrders = orders.filter(o => !liveOrderIds.has(o.id || o.orderId));
@@ -407,13 +402,15 @@ const HomeScreen: React.FC = () => {
   const renderOrderCard = (order: DeliveryPartnerOrder) => {
     const cardId = order.id || order.orderId;
     const isExpanded = expandedOrderIds.has(cardId);
+    const acceptedDateTime = formatOrderDateTime(order.orderDetails?.acceptedDate ?? null);
+    const completedDateTime = formatOrderDateTime(order.orderDetails?.completedDate ?? null);
     const orderDateTime = formatOrderDateTime(
       order.orderDetails?.creationTime ?? order.createdAt,
     );
     const totalAmount = order.orderDetails?.totalAmount ?? 0;
     const shopName = order.shopDetails?.name || 'Shop';
     const customerName = order.orderDetails?.customerName || order.orderId || 'N/A';
-    const status = formatStatusLabel(order.orderStatus?.toUpperCase() ?? 'UNKNOWN');
+    const status = formatStatusLabel(order.orderDetails?.state?.toUpperCase() ?? order.orderStatus?.toUpperCase() ?? 'UNKNOWN');
 
     const shopId = order.orderDetails?.shopId ?? order.shopId;
     const paymentMethod =
@@ -470,15 +467,28 @@ const HomeScreen: React.FC = () => {
         <View style={styles.orderCardTopRow}>
           <View style={styles.orderCardHeaderLeft}>
             <Text style={styles.orderIdText}>{customerName}</Text>
+            <Text style={styles.orderCardOrderId}>#{order.orderId || order.id}</Text>
             <Text style={styles.orderCardSummary}>
               {shopName} · {formatCurrency(totalAmount)}
             </Text>
           </View>
           <View style={styles.orderCardHeaderRight}>
-            <Text style={styles.orderDateValue}>
-              {orderDateTime.date}
-              {orderDateTime.time ? `, ${orderDateTime.time}` : ''}
-            </Text>
+            {acceptedDateTime.date !== 'N/A' && (
+              <Text style={styles.orderDateValue}>
+                Accepted: {acceptedDateTime.time || acceptedDateTime.date}
+              </Text>
+            )}
+            {completedDateTime.date !== 'N/A' && (
+              <Text style={styles.orderDateValue}>
+                Completed: {completedDateTime.time || completedDateTime.date}
+              </Text>
+            )}
+            {acceptedDateTime.date === 'N/A' && completedDateTime.date === 'N/A' && (
+              <Text style={styles.orderDateValue}>
+                {orderDateTime.date}
+                {orderDateTime.time ? `, ${orderDateTime.time}` : ''}
+              </Text>
+            )}
             <View style={styles.orderStatusPill}>
               <Text style={styles.orderStatusPillText}>{status}</Text>
             </View>
@@ -494,12 +504,27 @@ const HomeScreen: React.FC = () => {
         {isExpanded && (
           <>
             <View style={styles.sectionBlock}>
-              <View style={styles.sectionHeaderRow}>
-                <Text style={styles.sectionTitleInline}>Shop details</Text>
-                {shopDistance ? (
-                  <Text style={styles.distanceBadge}>{shopDistance}</Text>
-                ) : null}
-              </View>
+              <Text style={styles.sectionTitleInline}>Customer details</Text>
+              <Text style={styles.sectionSubText}>Phone: {customerMobile}</Text>
+              <Text style={styles.sectionSubText}>{customerAddress.text}</Text>
+              <TouchableOpacity
+                style={styles.directionButtonSecondary}
+                onPress={() =>
+                  openDirections({
+                    coordinate: customerCoordinate,
+                    fallbackQuery: customerAddress.text,
+                  })
+                }
+                activeOpacity={0.85}
+              >
+                <Text style={styles.directionButtonSecondaryText}>
+                  Get Directions
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.sectionBlock}>
+              <Text style={styles.sectionTitleInline}>Shop details</Text>
               <View style={styles.shopHeroRow}>
                 {shopImage ? (
                   <Image source={{ uri: shopImage }} style={styles.shopHeroImage} />
@@ -522,14 +547,6 @@ const HomeScreen: React.FC = () => {
               <Text style={styles.sectionSubText}>
                 {shopAddressText || 'Address unavailable'}
               </Text>
-              <View style={styles.quickMetaRow}>
-                <Text style={styles.quickMetaText}>
-                  Open: {order.shopDetails?.openingTime || 'N/A'}
-                </Text>
-                <Text style={styles.quickMetaText}>
-                  Close: {order.shopDetails?.closingTime || 'N/A'}
-                </Text>
-              </View>
               <TouchableOpacity
                 style={styles.directionButton}
                 onPress={() =>
@@ -544,31 +561,6 @@ const HomeScreen: React.FC = () => {
                 activeOpacity={0.85}
               >
                 <Text style={styles.directionButtonText}>Get Directions</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.sectionBlock}>
-              <View style={styles.sectionHeaderRow}>
-                <Text style={styles.sectionTitleInline}>Customer details</Text>
-                {customerDistance ? (
-                  <Text style={styles.distanceBadge}>{customerDistance}</Text>
-                ) : null}
-              </View>
-              <Text style={styles.sectionSubText}>Phone: {customerMobile}</Text>
-              <Text style={styles.sectionSubText}>{customerAddress.text}</Text>
-              <TouchableOpacity
-                style={styles.directionButtonSecondary}
-                onPress={() =>
-                  openDirections({
-                    coordinate: customerCoordinate,
-                    fallbackQuery: customerAddress.text,
-                  })
-                }
-                activeOpacity={0.85}
-              >
-                <Text style={styles.directionButtonSecondaryText}>
-                  Get Directions
-                </Text>
               </TouchableOpacity>
             </View>
 
@@ -677,7 +669,14 @@ const HomeScreen: React.FC = () => {
             </Text>
           </View>
         </View>
-        <Text style={styles.liveOrderId}>#{order.orderId || order.id}</Text>
+        <View style={styles.liveSubRow}>
+          <Text style={styles.liveOrderId}>#{order.orderId || order.id}</Text>
+          <View style={styles.liveStatePill}>
+            <Text style={styles.liveStatePillText}>
+              {formatStatusLabel(order.orderDetails?.state?.toUpperCase() ?? 'UNKNOWN')}
+            </Text>
+          </View>
+        </View>
 
         {/* Pickup */}
         <View style={styles.liveLocationRow}>
@@ -727,45 +726,6 @@ const HomeScreen: React.FC = () => {
           </TouchableOpacity>
         </View>
 
-        {/* Horizontal Timeline */}
-        <View style={styles.liveTimelineH}>
-          {TIMELINE_STEPS.map((step, idx) => {
-            const isCompleted = idx < currentStepIdx;
-            const isCurrent = idx === currentStepIdx;
-            const isLast = idx === TIMELINE_STEPS.length - 1;
-            return (
-              <React.Fragment key={step.key}>
-                <View style={styles.timelineStepH}>
-                  {isCompleted ? (
-                    <CheckCircle2 size={14} color="#16A34A" fill="#DCFCE7" />
-                  ) : isCurrent ? (
-                    <CircleDot size={14} color="#0E6DFD" />
-                  ) : (
-                    <Circle size={14} color="#CBD5E1" />
-                  )}
-                  <Text
-                    style={[
-                      styles.timelineLabelH,
-                      isCompleted && { color: '#16A34A' },
-                      isCurrent && { color: '#0E6DFD', fontFamily: FONT_FAMILY.outfitBold },
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {step.label}
-                  </Text>
-                </View>
-                {!isLast && (
-                  <View
-                    style={[
-                      styles.timelineLineH,
-                      isCompleted && { backgroundColor: '#16A34A' },
-                    ]}
-                  />
-                )}
-              </React.Fragment>
-            );
-          })}
-        </View>
       </View>
     );
   };
@@ -1336,6 +1296,12 @@ const styles = StyleSheet.create({
     fontFamily: FONT_FAMILY.bricolageBold,
     color: '#0F172A',
   },
+  orderCardOrderId: {
+    fontSize: 11,
+    fontFamily: FONT_FAMILY.outfitRegular,
+    color: '#94A3B8',
+    marginTop: 1,
+  },
   orderCardSummary: {
     fontSize: 12,
     fontFamily: FONT_FAMILY.outfitRegular,
@@ -1634,11 +1600,27 @@ const styles = StyleSheet.create({
     fontFamily: FONT_FAMILY.outfitBold,
     color: '#0E6DFD',
   },
+  liveSubRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
   liveOrderId: {
     fontSize: 11,
     fontFamily: FONT_FAMILY.outfitRegular,
     color: '#94A3B8',
-    marginBottom: 8,
+  },
+  liveStatePill: {
+    backgroundColor: '#ECFDF5',
+    paddingVertical: 2,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+  },
+  liveStatePillText: {
+    fontSize: 10,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#047857',
   },
   liveLocationRow: {
     flexDirection: 'row',
