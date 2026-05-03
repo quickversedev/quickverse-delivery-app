@@ -5,6 +5,7 @@ import LoginScreen from '../screens/LoginScreen';
 import OTPScreen from '../screens/OTPScreen';
 import HomeScreen from '../screens/HomeScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import OrderWebViewScreen from '../screens/OrderWebViewScreen';
 import LoadingScreen from '../components/LoadingScreen';
 import useAuthStore from '../hooks/useAuthStore';
 import { rehydrateAuthStore } from '../store/authStore';
@@ -18,6 +19,7 @@ type AuthStackParamList = {
 type AppStackParamList = {
   Home: undefined;
   Profile: undefined;
+  OrderWebView: { url: string; title?: string };
 };
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
@@ -45,6 +47,7 @@ const MainAppNavigator: React.FC = () => {
     >
       <AppStack.Screen name="Home" component={HomeScreen} />
       <AppStack.Screen name="Profile" component={ProfileScreen} />
+      <AppStack.Screen name="OrderWebView" component={OrderWebViewScreen} />
     </AppStack.Navigator>
   );
 };

@@ -42,6 +42,7 @@ import {
 type AppStackParamList = {
   Home: undefined;
   Profile: undefined;
+  OrderWebView: { url: string; title?: string };
 };
 
 type ParsedCustomerAddress = {
@@ -598,6 +599,20 @@ const HomeScreen: React.FC = () => {
                 {formatCurrency(totalAmount)}
               </Text>
             </View>
+            {!!order.orderDetails?.orderLink && (
+              <TouchableOpacity
+                style={styles.viewDetailsButton}
+                onPress={() =>
+                  navigation.navigate('OrderWebView', {
+                    url: order.orderDetails!.orderLink!,
+                    title: `Order #${order.orderId || order.id}`,
+                  })
+                }
+                activeOpacity={0.85}
+              >
+                <Text style={styles.viewDetailsButtonText}>View Order Details</Text>
+              </TouchableOpacity>
+            )}
           </>
         )}
       </TouchableOpacity>
@@ -726,6 +741,20 @@ const HomeScreen: React.FC = () => {
           </TouchableOpacity>
         </View>
 
+        {!!order.orderDetails?.orderLink && (
+          <TouchableOpacity
+            style={styles.liveViewDetailsButton}
+            onPress={() =>
+              navigation.navigate('OrderWebView', {
+                url: order.orderDetails!.orderLink!,
+                title: `Order #${order.orderId || order.id}`,
+              })
+            }
+            activeOpacity={0.85}
+          >
+            <Text style={styles.liveViewDetailsButtonText}>View Order Details</Text>
+          </TouchableOpacity>
+        )}
       </View>
     );
   };
@@ -1448,6 +1477,20 @@ const styles = StyleSheet.create({
     maxWidth: '64%',
     textAlign: 'right',
   },
+  viewDetailsButton: {
+    marginTop: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#0E6DFD',
+    backgroundColor: '#EEF4FF',
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  viewDetailsButtonText: {
+    color: '#0E6DFD',
+    fontSize: 13,
+    fontFamily: FONT_FAMILY.outfitExtraBold,
+  },
   orderFooterRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1669,6 +1712,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 8,
+  },
+  liveViewDetailsButton: {
+    marginTop: 12,
+    borderRadius: 10,
+    backgroundColor: '#0E6DFD',
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  liveViewDetailsButtonText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontFamily: FONT_FAMILY.outfitExtraBold,
   },
   liveConnector: {
     width: 2,
