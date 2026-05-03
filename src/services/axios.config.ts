@@ -24,8 +24,10 @@ const showToast = (message: string) => {
 
 export const API_CONFIG = {
   // baseURL: 'https://superscientifically-revengeless-ronald.ngrok-free.dev',
+  // ankit's IP
   // baseURL: 'http://10.0.2.2:8080',
-  // baseURL: 'http://prd.quickverse.in',
+  // production
+  baseURL: 'http://prd.quickverse.in',
   timeout: 15000,
   headers: {
     'Content-Type': 'application/json',
