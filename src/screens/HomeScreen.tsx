@@ -38,6 +38,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type AppStackParamList = {
   Home: undefined;
@@ -52,6 +53,7 @@ type ParsedCustomerAddress = {
 };
 
 const HomeScreen: React.FC = () => {
+  const insets = useSafeAreaInsets();
   const navigation =
     useNavigation<NativeStackNavigationProp<AppStackParamList>>();
   const { partnerProfile, isPartnerLoading, logout, authData } = useAuthStore();
@@ -66,7 +68,7 @@ const HomeScreen: React.FC = () => {
   );
   const [activeTab, setActiveTab] = useState<'dashboard' | 'orders'>('orders');
   const [isLogoutModalVisible, setIsLogoutModalVisible] = useState(false);
-  const [orderStatusFilter, setOrderStatusFilter] = useState<string>('all');
+
   const [timeRangeFilter, setTimeRangeFilter] = useState<'all' | 'today' | 'week' | 'month'>('all');
   const [expandedOrderIds, setExpandedOrderIds] = useState<Set<string>>(new Set());
   const [expandedItemIds, setExpandedItemIds] = useState<Set<string>>(new Set());
@@ -244,16 +246,7 @@ const HomeScreen: React.FC = () => {
       ? pastOrders
       : pastOrders.filter(o => getOrderEpochMs(o) >= getTimeRangeCutoff(timeRangeFilter));
 
-  const availableStatuses = Array.from(
-    new Set(timeFilteredOrders.map(o => o.orderStatus?.toUpperCase() ?? 'UNKNOWN')),
-  ).sort();
-
-  const filteredOrders =
-    orderStatusFilter === 'all'
-      ? timeFilteredOrders
-      : timeFilteredOrders.filter(
-          o => (o.orderStatus?.toUpperCase() ?? '') === orderStatusFilter,
-        );
+  const filteredOrders = timeFilteredOrders;
 
   const formatStatusLabel = (status: string) =>
     status
@@ -836,7 +829,7 @@ const HomeScreen: React.FC = () => {
       <View style={styles.backgroundGlowTwo} />
       <ScrollView
         style={styles.content}
-        contentContainerStyle={styles.contentContainer}
+        contentContainerStyle={[styles.contentContainer, { paddingTop: insets.top + 12 }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           activeTab === 'orders' ? (
@@ -1047,62 +1040,6 @@ const HomeScreen: React.FC = () => {
                     </TouchableOpacity>
                   ))}
                 </ScrollView>
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  style={styles.filterRow}
-                  contentContainerStyle={styles.filterRowContent}
-                >
-                  <TouchableOpacity
-                    style={[
-                      styles.filterChip,
-                      orderStatusFilter === 'all' && styles.filterChipActive,
-                    ]}
-                    onPress={() => setOrderStatusFilter('all')}
-                    activeOpacity={0.8}
-                  >
-                    <Text
-                      style={[
-                        styles.filterChipText,
-                        orderStatusFilter === 'all' &&
-                          styles.filterChipTextActive,
-                      ]}
-                    >
-                      All ({timeFilteredOrders.length})
-                    </Text>
-                  </TouchableOpacity>
-                  {availableStatuses.map(status => {
-                    const count = timeFilteredOrders.filter(
-                      o => (o.orderStatus?.toUpperCase() ?? '') === status,
-                    ).length;
-                    return (
-                      <TouchableOpacity
-                        key={status}
-                        style={[
-                          styles.filterChip,
-                          orderStatusFilter === status &&
-                            styles.filterChipActive,
-                        ]}
-                        onPress={() =>
-                          setOrderStatusFilter(
-                            orderStatusFilter === status ? 'all' : status,
-                          )
-                        }
-                        activeOpacity={0.8}
-                      >
-                        <Text
-                          style={[
-                            styles.filterChipText,
-                            orderStatusFilter === status &&
-                              styles.filterChipTextActive,
-                          ]}
-                        >
-                          {formatStatusLabel(status)} ({count})
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
                 {filteredOrders.length === 0 ? (
                   <Text style={styles.sectionText}>
                     No orders match this filter.
@@ -1153,7 +1090,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   contentContainer: {
-    paddingTop: 24,
     paddingBottom: 32,
   },
   customHeader: {
