@@ -494,6 +494,26 @@ const updateAssignedOrderStatus = async (
   );
 };
 
+export type DeliveryPartnerStats = {
+  deliveryPartnerId: string;
+  totalOrders: number;
+  totalEarnings: number;
+  daily: { count: number; earnings: number };
+  weekly: { count: number; earnings: number };
+  monthly: { count: number; earnings: number };
+};
+
+const getDeliveryPartnerStats = async (
+  partnerId: string,
+): Promise<DeliveryPartnerStats> => {
+  const data = await apiCall<DeliveryPartnerStats>(
+    axiosInstance.get(`/v1/order-master/deliveryPartner/stats/${partnerId}`, {
+      validateStatus: status => status >= 200 && status < 400,
+    }),
+  );
+  return data;
+};
+
 const updateDeliveryPartnerLocation = async (
   partnerId: string,
   latitude: number,
@@ -519,6 +539,7 @@ const deliveryPartnerService = {
   getAssignedOrdersByPartnerId,
   updateAssignedOrderStatus,
   updateDeliveryPartnerLocation,
+  getDeliveryPartnerStats,
 };
 
 export default deliveryPartnerService;

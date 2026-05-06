@@ -17,7 +17,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import useAuthStore from '../hooks/useAuthStore';
 import deliveryPartnerService from '../services/delivery-partner.service';
-import type { DeliveryPartnerOrder } from '../services/delivery-partner.service';
+import type { DeliveryPartnerOrder, DeliveryPartnerStats } from '../services/delivery-partner.service';
 import LogoutConfirmationModal from '../components/modals/LogoutConfirmationModal';
 import { FONT_FAMILY } from '../theme/typography';
 import {
@@ -39,6 +39,7 @@ import {
   ChevronUp,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Circle as SvgCircle } from 'react-native-svg';
 
 type AppStackParamList = {
   Home: undefined;
@@ -68,6 +69,9 @@ const HomeScreen: React.FC = () => {
   );
   const [activeTab, setActiveTab] = useState<'dashboard' | 'orders'>('orders');
   const [isLogoutModalVisible, setIsLogoutModalVisible] = useState(false);
+  const [partnerStats, setPartnerStats] = useState<DeliveryPartnerStats | null>(null);
+  const [isStatsLoading, setIsStatsLoading] = useState(false);
+  const [statsFilter, setStatsFilter] = useState<'daily' | 'weekly' | 'monthly' | 'allTime'>('daily');
 
   const [timeRangeFilter, setTimeRangeFilter] = useState<'all' | 'today' | 'week' | 'month'>('all');
   const [expandedOrderIds, setExpandedOrderIds] = useState<Set<string>>(new Set());
@@ -172,6 +176,23 @@ const HomeScreen: React.FC = () => {
     }
   };
 
+  const fetchPartnerStats = async () => {
+    if (!partnerId) {
+      return;
+    }
+    setIsStatsLoading(true);
+    try {
+      console.log('[DEBUG STATS] partnerId:', partnerId);
+      const data = await deliveryPartnerService.getDeliveryPartnerStats(partnerId);
+      console.log('[DEBUG STATS] response:', JSON.stringify(data, null, 2));
+      setPartnerStats(data);
+    } catch (error) {
+      console.error('Fetch partner stats failed', error);
+    } finally {
+      setIsStatsLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (!partnerId) {
       return;
@@ -181,6 +202,8 @@ const HomeScreen: React.FC = () => {
 
     if (activeTab === 'orders') {
       fetchAssignedOrders();
+    } else if (activeTab === 'dashboard') {
+      fetchPartnerStats();
     }
   }, [activeTab, partnerId]);
 
@@ -807,18 +830,34 @@ const HomeScreen: React.FC = () => {
     );
   };
 
-  const stats = [
-    {
-      label: 'Completed Orders',
-      value: String(partnerProfile?.orderSuccess ?? 0),
-      accent: '#16A34A',
-    },
-    {
-      label: 'Failed Orders',
-      value: String(partnerProfile?.orderFailed ?? 0),
-      accent: '#DC2626',
-    },
+  const statsFilterOptions: { key: 'daily' | 'weekly' | 'monthly' | 'allTime'; label: string }[] = [
+    { key: 'daily', label: 'Today' },
+    { key: 'weekly', label: 'This Week' },
+    { key: 'monthly', label: 'This Month' },
+    { key: 'allTime', label: 'All Time' },
   ];
+
+  const activeStatsData = statsFilter === 'allTime'
+    ? { count: partnerStats?.totalOrders ?? 0, earnings: partnerStats?.totalEarnings ?? 0 }
+    : partnerStats?.[statsFilter] ?? { count: 0, earnings: 0 };
+
+  const DAILY_TARGET = 15;
+  const XP_PER_ORDER = 5;
+  const BONUS_PER_TARGET = 60;
+  const dailyCompleted = partnerStats?.daily.count ?? 0;
+  const dailyRemaining = Math.max(0, DAILY_TARGET - dailyCompleted);
+  const totalXp = (partnerStats?.totalOrders ?? 0) * XP_PER_ORDER;
+
+  const LEVELS = [
+    { name: 'Bronze', minXp: 0, stars: 1, color: '#CD7F32' },
+    { name: 'Silver', minXp: 250, stars: 2, color: '#94A3B8' },
+    { name: 'Gold', minXp: 1000, stars: 3, color: '#F59E0B' },
+    { name: 'Platinum', minXp: 2500, stars: 4, color: '#8B5CF6' },
+    { name: 'Diamond', minXp: 5000, stars: 5, color: '#06B6D4' },
+  ];
+  const currentLevel = [...LEVELS].reverse().find(l => totalXp >= l.minXp) ?? LEVELS[0];
+  const nextLevel = LEVELS[LEVELS.indexOf(currentLevel) + 1] ?? null;
+  const levelMaxXp = nextLevel?.minXp ?? currentLevel.minXp;
 
   return (
     <View style={styles.container}>
@@ -841,8 +880,8 @@ const HomeScreen: React.FC = () => {
       >
         <View style={styles.customHeader}>
           <View style={styles.headerTitleWrap}>
-            <Text style={styles.headerTitle}>Home</Text>
-            <Text style={styles.headerSubtitle}>Your dashboard</Text>
+            <Text style={styles.headerTitle}>{partnerName}</Text>
+            <Text style={styles.headerSubtitle}>Transporter account</Text>
           </View>
 
           <View style={styles.headerActions}>
@@ -951,26 +990,123 @@ const HomeScreen: React.FC = () => {
 
         {activeTab === 'dashboard' ? (
           <>
-            <Text style={styles.eyebrow}>Transporter account</Text>
-            <Text style={styles.title}>Welcome back {partnerName}</Text>
-            <Text style={styles.subtitle}>
-              Here is your delivery summary for today.
-            </Text>
-
-            <View style={styles.grid}>
-              {stats.map(stat => (
-                <View key={stat.label} style={styles.statCard}>
-                  <View
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.filterRow}
+              contentContainerStyle={styles.filterRowContent}
+            >
+              {statsFilterOptions.map(item => (
+                <TouchableOpacity
+                  key={item.key}
+                  style={[
+                    styles.filterChip,
+                    statsFilter === item.key && styles.filterChipActive,
+                  ]}
+                  onPress={() => setStatsFilter(item.key)}
+                  activeOpacity={0.8}
+                >
+                  <Text
                     style={[
-                      styles.statAccent,
-                      { backgroundColor: stat.accent },
+                      styles.filterChipText,
+                      statsFilter === item.key && styles.filterChipTextActive,
                     ]}
-                  />
-                  <Text style={styles.statLabel}>{stat.label}</Text>
-                  <Text style={styles.statValue}>{stat.value}</Text>
-                </View>
+                  >
+                    {item.label}
+                  </Text>
+                </TouchableOpacity>
               ))}
-            </View>
+            </ScrollView>
+
+            {isStatsLoading ? (
+              <View style={styles.ordersStateWrap}>
+                <ActivityIndicator size="small" color="#0E6DFD" />
+                <Text style={styles.sectionText}>Loading stats...</Text>
+              </View>
+            ) : !partnerStats ? (
+              <Text style={styles.sectionText}>No stats available.</Text>
+            ) : (
+              <>
+                <View style={styles.grid}>
+                  <View style={styles.statCard}>
+                    <View style={[styles.statAccent, { backgroundColor: '#0E6DFD' }]} />
+                    <Text style={styles.statLabel}>Orders</Text>
+                    <Text style={styles.statValue}>{activeStatsData.count}</Text>
+                  </View>
+                  <View style={styles.statCard}>
+                    <View style={[styles.statAccent, { backgroundColor: '#16A34A' }]} />
+                    <Text style={styles.statLabel}>Earnings</Text>
+                    <Text style={styles.statValue}>Rs {activeStatsData.earnings.toFixed(2)}</Text>
+                  </View>
+                </View>
+                <View style={styles.grid}>
+                  <View style={styles.gamifyCard}>
+                    <Text style={styles.gamifyTitle}>Today's Target</Text>
+                    <Text style={styles.gamifyTargetLabel}>{DAILY_TARGET} Orders</Text>
+                    <View style={styles.progressRingWrap}>
+                      <Svg width={80} height={80}>
+                        <SvgCircle
+                          cx={40} cy={40} r={32}
+                          stroke="#E2E8F0"
+                          strokeWidth={7}
+                          fill="none"
+                        />
+                        <SvgCircle
+                          cx={40} cy={40} r={32}
+                          stroke={dailyCompleted >= DAILY_TARGET ? '#16A34A' : '#7C3AED'}
+                          strokeWidth={7}
+                          fill="none"
+                          strokeDasharray={`${2 * Math.PI * 32}`}
+                          strokeDashoffset={`${2 * Math.PI * 32 * (1 - Math.min(dailyCompleted / DAILY_TARGET, 1))}`}
+                          strokeLinecap="round"
+                          rotation="-90"
+                          origin="40,40"
+                        />
+                      </Svg>
+                      <Text style={styles.progressRingText}>
+                        {dailyCompleted}/{DAILY_TARGET}
+                      </Text>
+                    </View>
+                    <Text style={styles.gamifyHint}>
+                      {dailyRemaining > 0
+                        ? `${dailyRemaining} more to earn Rs ${BONUS_PER_TARGET} bonus`
+                        : 'Target achieved!'}
+                    </Text>
+                  </View>
+
+                  <View style={styles.gamifyCard}>
+                    <Text style={styles.gamifyTitle}>Captain Level</Text>
+                    <Text style={[styles.gamifyLevelName, { color: currentLevel.color }]}>
+                      {currentLevel.name}
+                    </Text>
+                    <View style={styles.starsRow}>
+                      {Array.from({ length: 5 }).map((_, i) => (
+                        <Text key={i} style={{ fontSize: 18 }}>
+                          {i < currentLevel.stars ? '⭐' : '☆'}
+                        </Text>
+                      ))}
+                    </View>
+                    <Text style={styles.xpText}>{totalXp} / {levelMaxXp} XP</Text>
+                    <View style={styles.xpBarBg}>
+                      <View
+                        style={[
+                          styles.xpBarFill,
+                          {
+                            width: `${Math.min((totalXp / (levelMaxXp || 1)) * 100, 100)}%`,
+                            backgroundColor: currentLevel.color,
+                          },
+                        ]}
+                      />
+                    </View>
+                    <Text style={styles.gamifyHint}>
+                      {nextLevel
+                        ? `Deliver more orders to reach ${nextLevel.name}`
+                        : 'Max level reached!'}
+                    </Text>
+                  </View>
+                </View>
+              </>
+            )}
           </>
         ) : (
           <View>
@@ -1594,6 +1730,77 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontFamily: FONT_FAMILY.bricolageBold,
     color: '#121A2B',
+  },
+  gamifyCard: {
+    width: '48%',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 22,
+    padding: 16,
+    marginBottom: 18,
+    alignItems: 'center',
+    shadowColor: '#0A1730',
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
+  },
+  gamifyTitle: {
+    fontSize: 14,
+    fontFamily: FONT_FAMILY.bricolageBold,
+    color: '#121A2B',
+    marginBottom: 4,
+  },
+  gamifyTargetLabel: {
+    fontSize: 13,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#5C6980',
+    marginBottom: 10,
+  },
+  progressRingWrap: {
+    width: 80,
+    height: 80,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  progressRingText: {
+    position: 'absolute',
+    fontSize: 14,
+    fontFamily: FONT_FAMILY.bricolageBold,
+    color: '#121A2B',
+  },
+  gamifyLevelName: {
+    fontSize: 15,
+    fontFamily: FONT_FAMILY.bricolageBold,
+    marginBottom: 6,
+  },
+  starsRow: {
+    flexDirection: 'row',
+    gap: 2,
+    marginBottom: 8,
+  },
+  xpText: {
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#5C6980',
+    marginBottom: 6,
+  },
+  xpBarBg: {
+    width: '100%',
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#E2E8F0',
+    marginBottom: 8,
+  },
+  xpBarFill: {
+    height: 6,
+    borderRadius: 3,
+  },
+  gamifyHint: {
+    fontSize: 11,
+    fontFamily: FONT_FAMILY.outfitRegular,
+    color: '#5C6980',
+    textAlign: 'center',
   },
   sectionCard: {
     marginTop: 8,
