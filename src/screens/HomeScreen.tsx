@@ -270,7 +270,7 @@ const HomeScreen: React.FC = () => {
     }
 
     return {
-      date: parsedDate.toLocaleDateString(),
+      date: `${String(parsedDate.getDate()).padStart(2, '0')}/${String(parsedDate.getMonth() + 1).padStart(2, '0')}/${String(parsedDate.getFullYear()).slice(-2)}`,
       time: parsedDate.toLocaleTimeString([], {
         hour: '2-digit',
         minute: '2-digit',
@@ -480,20 +480,17 @@ const HomeScreen: React.FC = () => {
             </Text>
           </View>
           <View style={styles.orderCardHeaderRight}>
+            <Text style={styles.orderDateValue}>
+              {orderDateTime.date !== 'N/A' ? orderDateTime.date : ''}
+            </Text>
             {acceptedDateTime.date !== 'N/A' && (
-              <Text style={styles.orderDateValue}>
+              <Text style={styles.orderTimeValue}>
                 Accepted: {acceptedDateTime.time || acceptedDateTime.date}
               </Text>
             )}
             {completedDateTime.date !== 'N/A' && (
-              <Text style={styles.orderDateValue}>
+              <Text style={styles.orderTimeValue}>
                 Completed: {completedDateTime.time || completedDateTime.date}
-              </Text>
-            )}
-            {acceptedDateTime.date === 'N/A' && completedDateTime.date === 'N/A' && (
-              <Text style={styles.orderDateValue}>
-                {orderDateTime.date}
-                {orderDateTime.time ? `, ${orderDateTime.time}` : ''}
               </Text>
             )}
             <View style={styles.orderStatusPill}>
@@ -1023,10 +1020,7 @@ const HomeScreen: React.FC = () => {
                         styles.filterChip,
                         timeRangeFilter === item.key && styles.filterChipActive,
                       ]}
-                      onPress={() => {
-                        setTimeRangeFilter(item.key);
-                        setOrderStatusFilter('all');
-                      }}
+                      onPress={() => setTimeRangeFilter(item.key)}
                       activeOpacity={0.8}
                     >
                       <Text
@@ -1335,6 +1329,11 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontFamily: FONT_FAMILY.outfitBold,
     color: '#0F172A',
+  },
+  orderTimeValue: {
+    fontSize: 10,
+    fontFamily: FONT_FAMILY.outfitRegular,
+    color: '#5C6980',
   },
   orderStatusPill: {
     backgroundColor: '#F0F6FF',
