@@ -7,14 +7,11 @@ import {
   ScrollView,
   TouchableOpacity,
   Dimensions,
-  Platform,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Phone,
-  Package,
-  CheckCircle2,
-  XCircle,
   LogOut,
   X,
   Sparkles,
@@ -27,6 +24,7 @@ import LogoutConfirmationModal from '../components/modals/LogoutConfirmationModa
 const { width } = Dimensions.get('window');
 
 const ProfileScreen: React.FC = () => {
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const { partnerProfile, authData, logout } = useAuthStore();
   const [isLogoutModalVisible, setIsLogoutModalVisible] = useState(false);
@@ -47,14 +45,10 @@ const ProfileScreen: React.FC = () => {
       .map((part: string) => part[0]?.toUpperCase())
       .join('') || 'DP';
 
-  const totalOrders = partnerProfile?.totalOrders ?? 0;
-  const orderSuccess = partnerProfile?.orderSuccess ?? 0;
-  const orderFailed = partnerProfile?.orderFailed ?? 0;
-
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, { paddingTop: insets.top + 12 }]}
       showsVerticalScrollIndicator={false}
     >
       {/* ── Header Row ── */}
@@ -121,43 +115,6 @@ const ProfileScreen: React.FC = () => {
           <Text style={styles.phonePillText}>{phone}</Text>
         </View>
 
-        <View style={styles.cardDivider} />
-
-        {/* ── Stats Tiles ── */}
-        <View style={styles.statsContainer}>
-          {/* Delivered */}
-          <View style={[styles.statTile, { backgroundColor: '#F0F6FF' }]}>
-            <View style={styles.statIconBgWhite}>
-              <Package size={20} color="#1A6BFF" />
-            </View>
-            <Text style={[styles.statValue, { color: '#1A6BFF' }]}>
-              {totalOrders}
-            </Text>
-            <Text style={styles.statLabel}>Delivered</Text>
-          </View>
-
-          {/* Success */}
-          <View style={[styles.statTile, { backgroundColor: '#F0FDF4' }]}>
-            <View style={styles.statIconBgWhite}>
-              <CheckCircle2 size={20} color="#22C55E" />
-            </View>
-            <Text style={[styles.statValue, { color: '#16A34A' }]}>
-              {orderSuccess}
-            </Text>
-            <Text style={styles.statLabel}>Success</Text>
-          </View>
-
-          {/* Failed */}
-          <View style={[styles.statTile, { backgroundColor: '#FEF2F2' }]}>
-            <View style={styles.statIconBgWhite}>
-              <XCircle size={20} color="#EF4444" />
-            </View>
-            <Text style={[styles.statValue, { color: '#DC2626' }]}>
-              {orderFailed}
-            </Text>
-            <Text style={styles.statLabel}>Failed</Text>
-          </View>
-        </View>
       </View>
 
       {/* ── Logout ── */}
@@ -186,7 +143,7 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 20,
-    paddingTop: Platform.OS === 'ios' ? 40 : 20,
+    paddingTop: 20,
     paddingBottom: 40,
   },
   headerRow: {
@@ -313,47 +270,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#475569',
     fontFamily: FONT_FAMILY.outfitRegular,
-  },
-  cardDivider: {
-    height: 1,
-    backgroundColor: '#F1F5F9',
-    marginBottom: 24,
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  statTile: {
-    flex: 1,
-    borderRadius: 20,
-    paddingVertical: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  statIconBgWhite: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
-    // Subtle shadow for the icon circle
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 5,
-    elevation: 2,
-  },
-  statValue: {
-    fontSize: 24,
-    fontFamily: FONT_FAMILY.bricolageBold,
-  },
-  statLabel: {
-    fontSize: 13,
-    fontFamily: FONT_FAMILY.outfitRegular,
-    color: '#64748B',
-    marginTop: 2,
   },
   logoutButton: {
     flexDirection: 'row',

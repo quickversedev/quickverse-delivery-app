@@ -149,9 +149,6 @@ const HomeScreen: React.FC = () => {
     try {
       const response =
         await deliveryPartnerService.getAssignedOrdersByPartnerId(partnerId);
-      if (__DEV__) {
-        console.log('[DEBUG ORDERS]', JSON.stringify(response, null, 2));
-      }
       setOrders(getUniqueLatestOrders(response));
     } catch (error) {
       console.error('Fetch assigned orders failed', error);
@@ -182,9 +179,7 @@ const HomeScreen: React.FC = () => {
     }
     setIsStatsLoading(true);
     try {
-      console.log('[DEBUG STATS] partnerId:', partnerId);
       const data = await deliveryPartnerService.getDeliveryPartnerStats(partnerId);
-      console.log('[DEBUG STATS] response:', JSON.stringify(data, null, 2));
       setPartnerStats(data);
     } catch (error) {
       console.error('Fetch partner stats failed', error);
