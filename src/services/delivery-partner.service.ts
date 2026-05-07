@@ -494,6 +494,15 @@ const updateAssignedOrderStatus = async (
   );
 };
 
+export type TopPerformingRider = {
+  riderId: string;
+  name: string;
+  profilePicture: string | null;
+  deliveries: number;
+  earnings: number;
+  perOrderEarning: number;
+};
+
 export type DeliveryPartnerStats = {
   deliveryPartnerId: string;
   totalOrders: number;
@@ -501,6 +510,7 @@ export type DeliveryPartnerStats = {
   daily: { count: number; earnings: number };
   weekly: { count: number; earnings: number };
   monthly: { count: number; earnings: number };
+  topPerformingRiders: TopPerformingRider[];
 };
 
 const getDeliveryPartnerStats = async (

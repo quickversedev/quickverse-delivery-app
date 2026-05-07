@@ -1105,6 +1105,40 @@ const HomeScreen: React.FC = () => {
                     </Text>
                   </View>
                 </View>
+
+                {partnerStats.topPerformingRiders?.length > 0 && (
+                  <View style={styles.leaderboardCard}>
+                    <Text style={styles.leaderboardTitle}>Top Performers</Text>
+                    {partnerStats.topPerformingRiders.map((rider, index) => {
+                      const isCurrentUser = rider.riderId === partnerId;
+                      return (
+                        <View
+                          key={rider.riderId}
+                          style={[
+                            styles.leaderboardRow,
+                            isCurrentUser && styles.leaderboardRowHighlight,
+                          ]}
+                        >
+                          <Text style={styles.leaderboardRank}>
+                            {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `#${index + 1}`}
+                          </Text>
+                          <Image
+                            source={{ uri: rider.profilePicture || undefined }}
+                            style={styles.leaderboardAvatar}
+                          />
+                          <View style={styles.leaderboardInfo}>
+                            <Text style={[styles.leaderboardName, isCurrentUser && styles.leaderboardNameHighlight]} numberOfLines={1}>
+                              {rider.name}{isCurrentUser ? ' (You)' : ''}
+                            </Text>
+                            <Text style={styles.leaderboardSub}>
+                              {rider.deliveries} orders · Rs {rider.earnings.toFixed(2)}
+                            </Text>
+                          </View>
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
               </>
             )}
           </>
@@ -1801,6 +1835,63 @@ const styles = StyleSheet.create({
     fontFamily: FONT_FAMILY.outfitRegular,
     color: '#5C6980',
     textAlign: 'center',
+  },
+  leaderboardCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 22,
+    padding: 18,
+    marginBottom: 18,
+    shadowColor: '#0A1730',
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
+  },
+  leaderboardTitle: {
+    fontSize: 16,
+    fontFamily: FONT_FAMILY.bricolageBold,
+    color: '#121A2B',
+    marginBottom: 14,
+  },
+  leaderboardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    marginBottom: 4,
+  },
+  leaderboardRowHighlight: {
+    backgroundColor: '#EFF6FF',
+  },
+  leaderboardRank: {
+    width: 28,
+    fontSize: 16,
+    textAlign: 'center',
+  },
+  leaderboardAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#E2E8F0',
+    marginHorizontal: 10,
+  },
+  leaderboardInfo: {
+    flex: 1,
+  },
+  leaderboardName: {
+    fontSize: 14,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#121A2B',
+  },
+  leaderboardNameHighlight: {
+    color: '#0E6DFD',
+  },
+  leaderboardSub: {
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.outfitRegular,
+    color: '#5C6980',
+    marginTop: 2,
   },
   sectionCard: {
     marginTop: 8,
