@@ -28,6 +28,7 @@ export const API_CONFIG = {
   // baseURL: 'http://10.0.2.2:8080',
   // production
   baseURL: 'http://prd.quickverse.in',
+  // baseURL: 'http://console-wharf-overplant.ngrok-free.dev',
   timeout: 15000,
   headers: {
     'Content-Type': 'application/json',

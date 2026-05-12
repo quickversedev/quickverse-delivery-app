@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -18,6 +18,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import useAuthStore from '../hooks/useAuthStore';
 import deliveryPartnerService from '../services/delivery-partner.service';
 import type { DeliveryPartnerOrder, DeliveryPartnerStats } from '../services/delivery-partner.service';
+import websocketService from '../services/websocket.service';
 import LogoutConfirmationModal from '../components/modals/LogoutConfirmationModal';
 import { FONT_FAMILY } from '../theme/typography';
 import {
@@ -76,6 +77,7 @@ const HomeScreen: React.FC = () => {
   const [timeRangeFilter, setTimeRangeFilter] = useState<'all' | 'today' | 'week' | 'month'>('all');
   const [expandedOrderIds, setExpandedOrderIds] = useState<Set<string>>(new Set());
   const [expandedItemIds, setExpandedItemIds] = useState<Set<string>>(new Set());
+  const [wsConnected, setWsConnected] = useState(false);
 
   useEffect(() => {
     if (typeof partnerProfile?.isOnline === 'boolean') {
@@ -201,6 +203,22 @@ const HomeScreen: React.FC = () => {
       fetchPartnerStats();
     }
   }, [activeTab, partnerId]);
+
+  const handleWebSocketEvent = useCallback(() => {
+    fetchAssignedOrders({ silent: true });
+  }, [partnerId]);
+
+  useEffect(() => {
+    if (!partnerId) {
+      return;
+    }
+    websocketService.connect(partnerId, handleWebSocketEvent);
+    const unsubscribe = websocketService.onStatusChange(setWsConnected);
+    return () => {
+      unsubscribe();
+      websocketService.disconnect();
+    };
+  }, [partnerId, handleWebSocketEvent]);
 
   const handleToggleOnline = async () => {
     if (!partnerId) {
@@ -876,7 +894,13 @@ const HomeScreen: React.FC = () => {
         <View style={styles.customHeader}>
           <View style={styles.headerTitleWrap}>
             <Text style={styles.headerTitle}>{partnerName}</Text>
-            <Text style={styles.headerSubtitle}>Transporter account</Text>
+            <View style={styles.headerSubtitleRow}>
+              <Text style={styles.headerSubtitle}>Transporter account</Text>
+              <View style={[styles.wsDot, wsConnected ? styles.wsDotOn : styles.wsDotOff]} />
+              <Text style={[styles.wsLabel, wsConnected ? styles.wsLabelOn : styles.wsLabelOff]}>
+                {wsConnected ? 'Live' : 'Offline'}
+              </Text>
+            </View>
           </View>
 
           <View style={styles.headerActions}>
@@ -1266,11 +1290,37 @@ const styles = StyleSheet.create({
     fontFamily: FONT_FAMILY.bricolageBold,
     color: '#121A2B',
   },
-  headerSubtitle: {
+  headerSubtitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginTop: 4,
+    gap: 6,
+  },
+  headerSubtitle: {
     fontSize: 14,
     fontFamily: FONT_FAMILY.outfitRegular,
     color: '#5C6980',
+  },
+  wsDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  wsDotOn: {
+    backgroundColor: '#22C55E',
+  },
+  wsDotOff: {
+    backgroundColor: '#EF4444',
+  },
+  wsLabel: {
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.outfitRegular,
+  },
+  wsLabelOn: {
+    color: '#22C55E',
+  },
+  wsLabelOff: {
+    color: '#EF4444',
   },
   headerActions: {
     flexDirection: 'row',
