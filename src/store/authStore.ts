@@ -4,6 +4,7 @@ import authService from '../services/auth.service';
 import deliveryPartnerService, {
   DeliveryPartnerProfile,
 } from '../services/delivery-partner.service';
+import deviceRegistryService from '../services/device-registry.service';
 import { TokenStorage } from '../utils/storage';
 
 const STORAGE_KEY = 'auth-store';
@@ -229,6 +230,8 @@ export const useAuthStore = create<AuthStoreState>()(() => ({
       TokenStorage.savePartnerId(session.deliveryPartnerId);
       TokenStorage.savePhoneNumber(session.phoneNumber);
       TokenStorage.setLoggedIn(true);
+
+      deviceRegistryService.updateDeviceRegistrySafe(session.phoneNumber, session.token);
 
       if (session.deliveryPartnerId) {
         const profile = await deliveryPartnerService.getDeliveryPartnerById(
