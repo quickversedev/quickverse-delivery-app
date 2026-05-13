@@ -1,8 +1,9 @@
 import { useEffect, useRef } from 'react';
-import { Alert, Linking, PermissionsAndroid, Platform } from 'react-native';
+import { Linking, PermissionsAndroid, Platform, Alert } from 'react-native';
 import messaging, {
   FirebaseMessagingTypes,
 } from '@react-native-firebase/messaging';
+import notifee, { AndroidImportance } from '@notifee/react-native';
 import useAuthStore from '../hooks/useAuthStore';
 import { requestLocationAccess } from '../utils/location';
 
@@ -33,13 +34,33 @@ async function requestNotificationPermission(): Promise<void> {
   }
 }
 
-function handleNotificationTap(
-  remoteMessage: FirebaseMessagingTypes.RemoteMessage | null,
-) {
-  if (!remoteMessage) {
+async function displayNotification(
+  remoteMessage: FirebaseMessagingTypes.RemoteMessage,
+): Promise<void> {
+  const title =
+    remoteMessage.notification?.title || remoteMessage.data?.title;
+  const body =
+    remoteMessage.notification?.body || remoteMessage.data?.body;
+
+  if (!title && !body) {
     return;
   }
-  console.log('[Notifications] Opened from tap:', remoteMessage.messageId);
+
+  const channelId = await notifee.createChannel({
+    id: 'default',
+    name: 'Default Channel',
+    importance: AndroidImportance.HIGH,
+  });
+
+  await notifee.displayNotification({
+    title: title as string | undefined,
+    body: body as string | undefined,
+    data: remoteMessage.data,
+    android: {
+      channelId,
+      pressAction: { id: 'default' },
+    },
+  });
 }
 
 function NotificationSetup(): null {
@@ -49,19 +70,20 @@ function NotificationSetup(): null {
   useEffect(() => {
     const unsubscribeForeground = messaging().onMessage(async remoteMessage => {
       console.log('[FCM] Foreground message:', remoteMessage.notification);
-      if (remoteMessage.notification) {
-        Alert.alert(
-          remoteMessage.notification.title || 'New Notification',
-          remoteMessage.notification.body || '',
-        );
-      }
+      await displayNotification(remoteMessage);
     });
 
-    messaging().onNotificationOpenedApp(handleNotificationTap);
+    messaging().onNotificationOpenedApp(remoteMessage => {
+      console.log('[Notifications] Opened from background:', remoteMessage.messageId);
+    });
 
     messaging()
       .getInitialNotification()
-      .then(handleNotificationTap);
+      .then(remoteMessage => {
+        if (remoteMessage) {
+          console.log('[Notifications] Opened from quit state:', remoteMessage.messageId);
+        }
+      });
 
     return unsubscribeForeground;
   }, []);
