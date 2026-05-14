@@ -6,12 +6,18 @@ import 'react-native-gesture-handler';
 import { enableScreens } from 'react-native-screens';
 import { AppRegistry } from 'react-native';
 import messaging from '@react-native-firebase/messaging';
-import notifee, { AndroidImportance } from '@notifee/react-native';
+import notifee, { AndroidImportance, EventType } from '@notifee/react-native';
 import App from './App';
 import { name as appName } from './app.json';
 
 messaging().setBackgroundMessageHandler(async remoteMessage => {
   try {
+    // When the message has a notification payload, Android already auto-displayed
+    // it in the system tray. Displaying again via notifee would produce a duplicate.
+    if (remoteMessage.notification) {
+      return;
+    }
+
     const channelId = await notifee.createChannel({
       id: 'default',
       name: 'Default Channel',
@@ -19,9 +25,9 @@ messaging().setBackgroundMessageHandler(async remoteMessage => {
     });
 
     await notifee.displayNotification({
-      title: remoteMessage?.notification?.title,
-      body: remoteMessage?.notification?.body,
-      data: remoteMessage?.data,
+      title: remoteMessage.data?.title,
+      body: remoteMessage.data?.body,
+      data: remoteMessage.data,
       android: {
         channelId,
         pressAction: { id: 'default' },
@@ -29,6 +35,12 @@ messaging().setBackgroundMessageHandler(async remoteMessage => {
     });
   } catch (error) {
     console.warn('[FCM] Background notification display failed:', error);
+  }
+});
+
+notifee.onBackgroundEvent(async ({ type, detail }) => {
+  if (type === EventType.PRESS || type === EventType.ACTION_PRESS) {
+    console.log('[Notifee] Background press:', detail.notification?.data);
   }
 });
 

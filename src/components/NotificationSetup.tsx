@@ -3,7 +3,7 @@ import { Linking, PermissionsAndroid, Platform, Alert } from 'react-native';
 import messaging, {
   FirebaseMessagingTypes,
 } from '@react-native-firebase/messaging';
-import notifee, { AndroidImportance } from '@notifee/react-native';
+import notifee, { AndroidImportance, EventType } from '@notifee/react-native';
 import useAuthStore from '../hooks/useAuthStore';
 import { requestLocationAccess } from '../utils/location';
 
@@ -85,7 +85,16 @@ function NotificationSetup(): null {
         }
       });
 
-    return unsubscribeForeground;
+    const unsubscribeNotifee = notifee.onForegroundEvent(({ type, detail }) => {
+      if (type === EventType.PRESS || type === EventType.ACTION_PRESS) {
+        console.log('[Notifee] Foreground press:', detail.notification?.data);
+      }
+    });
+
+    return () => {
+      unsubscribeForeground();
+      unsubscribeNotifee();
+    };
   }, []);
 
   useEffect(() => {

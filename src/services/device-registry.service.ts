@@ -61,9 +61,12 @@ async function getFcmToken(): Promise<string> {
       authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
       authStatus === messaging.AuthorizationStatus.PROVISIONAL;
     if (!enabled) {
+      console.warn('[DeviceRegistry] Notification permission not granted');
       return '';
     }
-    return await messaging().getToken();
+    const token = await messaging().getToken();
+    console.log('[DeviceRegistry] FCM token:', token || '(empty)');
+    return token;
   } catch (e) {
     console.warn('[DeviceRegistry] FCM token fetch failed:', e);
     return '';
@@ -87,7 +90,11 @@ async function updateDeviceRegistry(phoneOverride?: string, tokenOverride?: stri
       appVersion: '1.0',
     }),
     withTimeout(getFcmToken(), 10000, ''),
-    getBestEffortCurrentLocation().catch(() => ({ latitude: 0, longitude: 0 })),
+    withTimeout(
+      getBestEffortCurrentLocation().catch(() => ({ latitude: 0, longitude: 0 })),
+      10000,
+      { latitude: 0, longitude: 0 },
+    ),
   ]);
 
   const now = new Date().toISOString();
@@ -105,6 +112,8 @@ async function updateDeviceRegistry(phoneOverride?: string, tokenOverride?: stri
     loginTimestamp: now,
   };
 
+  console.log('[DeviceRegistry] Registering device — fcmToken:', fcmToken ? 'present' : 'MISSING', '| phone:', phone);
+
   await apiCall<void>(
     axiosInstance.post('/quickVerse/v1/updateDeviceRegistry', body, {
       headers: {
@@ -113,6 +122,7 @@ async function updateDeviceRegistry(phoneOverride?: string, tokenOverride?: stri
     }),
   );
 
+  console.log('[DeviceRegistry] Registration successful — fcmToken:', fcmToken.substring(0, 20) + '...');
 }
 
 async function updateDeviceRegistrySafe(phone?: string, token?: string): Promise<void> {
