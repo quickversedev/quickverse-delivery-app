@@ -896,10 +896,6 @@ const HomeScreen: React.FC = () => {
             <Text style={styles.headerTitle}>{partnerName}</Text>
             <View style={styles.headerSubtitleRow}>
               <Text style={styles.headerSubtitle}>Transporter account</Text>
-              <View style={[styles.wsDot, wsConnected ? styles.wsDotOn : styles.wsDotOff]} />
-              <Text style={[styles.wsLabel, wsConnected ? styles.wsLabelOn : styles.wsLabelOff]}>
-                {wsConnected ? 'Live' : 'Offline'}
-              </Text>
             </View>
           </View>
 
