@@ -138,8 +138,7 @@ const OTPScreen: React.FC<OTPScreenProps> = ({ navigation }) => {
 
   const isOtpValid = /^[0-9]{4}$/.test(otp);
 
-  const formatPhoneNumber = (phone: string) =>
-    phone.length > 4 ? `${phone.slice(0, 3)}****${phone.slice(-3)}` : phone;
+  const formatPhoneNumber = (phone: string) => phone;
 
   const handleVerifyOTP = async () => {
     if (!isOtpValid) {

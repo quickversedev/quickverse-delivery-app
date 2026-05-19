@@ -227,6 +227,7 @@ const HomeScreen: React.FC = () => {
     }
 
     const nextStatus = !isOnline;
+    setIsOnline(nextStatus);
     setIsToggling(true);
 
     try {
@@ -234,8 +235,8 @@ const HomeScreen: React.FC = () => {
         partnerId,
         nextStatus,
       );
-      setIsOnline(nextStatus);
     } catch (error) {
+      setIsOnline(!nextStatus);
       console.error('Toggle online status failed', error);
       Alert.alert(
         'Status update failed',
