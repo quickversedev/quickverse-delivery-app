@@ -12,9 +12,10 @@ import { name as appName } from './app.json';
 
 messaging().setBackgroundMessageHandler(async remoteMessage => {
   try {
-    // When the message has a notification payload, Android already auto-displayed
-    // it in the system tray. Displaying again via notifee would produce a duplicate.
-    if (remoteMessage.notification) {
+    const title = remoteMessage.notification?.title || remoteMessage.data?.title;
+    const body = remoteMessage.notification?.body || remoteMessage.data?.body;
+
+    if (!title && !body) {
       return;
     }
 
@@ -25,8 +26,8 @@ messaging().setBackgroundMessageHandler(async remoteMessage => {
     });
 
     await notifee.displayNotification({
-      title: remoteMessage.data?.title,
-      body: remoteMessage.data?.body,
+      title,
+      body,
       data: remoteMessage.data,
       android: {
         channelId,

@@ -18,7 +18,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import useAuthStore from '../hooks/useAuthStore';
 import deliveryPartnerService from '../services/delivery-partner.service';
 import type { DeliveryPartnerOrder, DeliveryPartnerStats } from '../services/delivery-partner.service';
-import websocketService from '../services/websocket.service';
+import websocketService, { type OrderActionEvent } from '../services/websocket.service';
 import LogoutConfirmationModal from '../components/modals/LogoutConfirmationModal';
 import { FONT_FAMILY } from '../theme/typography';
 import {
@@ -204,7 +204,13 @@ const HomeScreen: React.FC = () => {
     }
   }, [activeTab, partnerId]);
 
-  const handleWebSocketEvent = useCallback(() => {
+  const handleWebSocketEvent = useCallback((event: OrderActionEvent) => {
+    if (event.status?.toUpperCase().includes('CANCEL')) {
+      Alert.alert(
+        'Order Cancelled',
+        `Order #${event.orderId} from ${event.customerName || 'customer'} has been cancelled.`,
+      );
+    }
     fetchAssignedOrders({ silent: true });
   }, [partnerId]);
 
