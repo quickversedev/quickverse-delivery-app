@@ -20,6 +20,9 @@ import deliveryPartnerService from '../services/delivery-partner.service';
 import type { DeliveryPartnerOrder, DeliveryPartnerStats } from '../services/delivery-partner.service';
 import websocketService, { type OrderActionEvent } from '../services/websocket.service';
 import LogoutConfirmationModal from '../components/modals/LogoutConfirmationModal';
+import BillSummaryCard from '../components/BillSummaryCard';
+import usePricingStore from '../store/pricingStore';
+import type { ServiceType } from '../types/pricing';
 import { FONT_FAMILY } from '../theme/typography';
 import {
   getBestEffortCurrentLocation,
@@ -78,6 +81,14 @@ const HomeScreen: React.FC = () => {
   const [expandedOrderIds, setExpandedOrderIds] = useState<Set<string>>(new Set());
   const [expandedItemIds, setExpandedItemIds] = useState<Set<string>>(new Set());
   const [wsConnected, setWsConnected] = useState(false);
+
+  const { fetchPricing, getPricingValues } = usePricingStore();
+
+  useEffect(() => {
+    fetchPricing('FOOD');
+    fetchPricing('GROCERY');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (typeof partnerProfile?.isOnline === 'boolean') {
@@ -322,7 +333,7 @@ const HomeScreen: React.FC = () => {
   };
 
   const formatCurrency = (amount: number) => {
-    return `Rs ${Number.isFinite(amount) ? amount.toFixed(2) : '0.00'}`;
+    return `₹${Number.isFinite(amount) ? amount.toFixed(2) : '0.00'}`;
   };
 
   const parseCustomerAddress = (
@@ -502,9 +513,15 @@ const HomeScreen: React.FC = () => {
         ? order.orderDetails.orderItem.map(item => item.name).join(', ')
         : 'N/A');
     const itemCount = order.orderDetails?.totalItemCount ?? 0;
-    const deliveryFee = order.orderDetails?.deliveryFee ?? 0;
     const amountExcludingDeliveryFee =
       order.orderDetails?.amountExcludingDeliveryFee ?? 0;
+
+    const serviceType: ServiceType = order.shopDetails?.category?.toLowerCase().includes('grocery') ? 'GROCERY' : 'FOOD';
+    const pricing = getPricingValues(serviceType);
+    const pricingCommission = pricing.commissionRate * amountExcludingDeliveryFee;
+    const pricingTaxableAmount = pricingCommission + pricing.deliveryFee + pricing.platformFee;
+    const pricingTaxes = Math.round(pricing.gstRate * pricingTaxableAmount);
+    const computedTotal = amountExcludingDeliveryFee + pricing.deliveryFee + pricing.platformFee + pricing.packagingCharges + pricingTaxes;
 
     return (
       <TouchableOpacity
@@ -519,7 +536,7 @@ const HomeScreen: React.FC = () => {
             <Text style={styles.orderIdText}>{customerName}</Text>
             <Text style={styles.orderCardOrderId}>#{order.orderId || order.id}</Text>
             <Text style={styles.orderCardSummary}>
-              {shopName} · {formatCurrency(totalAmount)}
+              {shopName} · {formatCurrency(computedTotal)}
             </Text>
           </View>
           <View style={styles.orderCardHeaderRight}>
@@ -643,25 +660,22 @@ const HomeScreen: React.FC = () => {
                 <Text style={styles.orderMetaLabel}>Payment</Text>
                 <Text style={styles.orderMetaValue}>{paymentMethod}</Text>
               </View>
-              <View style={styles.orderMetaRow}>
-                <Text style={styles.orderMetaLabel}>Subtotal</Text>
-                <Text style={styles.orderMetaValue}>
-                  {formatCurrency(amountExcludingDeliveryFee)}
-                </Text>
-              </View>
-              <View style={styles.orderMetaRow}>
-                <Text style={styles.orderMetaLabel}>Delivery fee</Text>
-                <Text style={styles.orderMetaValue}>
-                  {formatCurrency(deliveryFee)}
-                </Text>
-              </View>
             </View>
-            <View style={styles.orderFooterRow}>
-              <Text style={styles.orderTotalLabel}>Total amount</Text>
-              <Text style={styles.orderTotalValue}>
-                {formatCurrency(totalAmount)}
-              </Text>
-            </View>
+            <BillSummaryCard
+              totalAmount={computedTotal}
+              subtotal={amountExcludingDeliveryFee}
+              deliveryFee={pricing.deliveryFee}
+              deliveryFeeOriginal={pricing.deliveryFeeOriginal}
+              platformFee={pricing.platformFee}
+              platformFeeOriginal={pricing.platformFeeOriginal}
+              packagingCharges={pricing.packagingCharges}
+              packagingChargesOriginal={pricing.packagingChargesOriginal}
+              taxes={pricingTaxes}
+              commission={pricingCommission}
+              taxableAmount={pricingTaxableAmount}
+              commissionRate={pricing.commissionRate}
+              gstRate={pricing.gstRate}
+            />
             {!!order.orderDetails?.orderLink && (
               <TouchableOpacity
                 style={styles.viewDetailsButton}
@@ -737,12 +751,19 @@ const HomeScreen: React.FC = () => {
       order.orderDetails?.creationTime ?? order.createdAt,
     );
 
+    const liveAmountExcludingDeliveryFee = order.orderDetails?.amountExcludingDeliveryFee ?? 0;
+    const liveServiceType: ServiceType = order.shopDetails?.category?.toLowerCase().includes('grocery') ? 'GROCERY' : 'FOOD';
+    const livePricing = getPricingValues(liveServiceType);
+    const liveCommission = livePricing.commissionRate * liveAmountExcludingDeliveryFee;
+    const liveTaxableAmount = liveCommission + livePricing.deliveryFee + livePricing.platformFee;
+    const liveTaxes = Math.round(livePricing.gstRate * liveTaxableAmount);
+    const liveComputedTotal = liveAmountExcludingDeliveryFee + livePricing.deliveryFee + livePricing.platformFee + livePricing.packagingCharges + liveTaxes;
+
     return (
       <View key={order.id || order.orderId} style={[styles.liveCard, { marginBottom: 12 }]}>
         <View style={styles.livePulseRow}>
           <View style={styles.liveDot} />
           <Text style={styles.liveLabel}>Live Order</Text>
-          <Text style={styles.liveEarningsInline}>{formatCurrency(totalAmount)}</Text>
           <View style={styles.liveTimeBadge}>
             <Text style={styles.liveTimeText}>
               {orderDateTime.time || orderDateTime.date}
@@ -831,6 +852,22 @@ const HomeScreen: React.FC = () => {
               ))}
           </>
         )}
+
+        <BillSummaryCard
+          totalAmount={liveComputedTotal}
+          subtotal={liveAmountExcludingDeliveryFee}
+          deliveryFee={livePricing.deliveryFee}
+          deliveryFeeOriginal={livePricing.deliveryFeeOriginal}
+          platformFee={livePricing.platformFee}
+          platformFeeOriginal={livePricing.platformFeeOriginal}
+          packagingCharges={livePricing.packagingCharges}
+          packagingChargesOriginal={livePricing.packagingChargesOriginal}
+          taxes={liveTaxes}
+          commission={liveCommission}
+          taxableAmount={liveTaxableAmount}
+          commissionRate={livePricing.commissionRate}
+          gstRate={livePricing.gstRate}
+        />
 
         {!!order.orderDetails?.orderLink && (
           <TouchableOpacity
