@@ -5,6 +5,8 @@ require Pod::Executable.execute_command('node', ['-p',
     {paths: [process.argv[1]]},
   )', __dir__]).strip
 
+ENV['RCT_NEW_ARCH_ENABLED'] = '0'
+
 platform :ios, min_ios_version_supported
 prepare_react_native_project!
 
@@ -16,6 +18,8 @@ end
 
 target 'QvTransportersAppUi' do
   config = use_native_modules!
+
+  pod 'GoogleUtilities', :modular_headers => true
 
   use_react_native!(
     :path => config[:reactNativePath],
@@ -31,5 +35,32 @@ target 'QvTransportersAppUi' do
       :mac_catalyst_enabled => false,
       # :ccache_enabled => true
     )
+
+    installer.pods_project.build_configurations.each do |configuration|
+      configuration.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+      configuration.build_settings['GCC_TREAT_WARNINGS_AS_ERRORS'] = 'NO'
+    end
+
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each do |configuration|
+        configuration.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+        configuration.build_settings['GCC_TREAT_WARNINGS_AS_ERRORS'] = 'NO'
+
+        if target.name == 'fmt'
+          definitions = configuration.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] || ['$(inherited)']
+          definitions = [definitions] unless definitions.is_a?(Array)
+          definitions << 'FMT_USE_CONSTEVAL=0' unless definitions.include?('FMT_USE_CONSTEVAL=0')
+          configuration.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] = definitions
+        end
+      end
+
+      next unless target.respond_to?(:source_build_phase)
+
+      target.source_build_phase.files.each do |build_file|
+        next unless build_file.settings && build_file.settings['COMPILER_FLAGS']
+
+        build_file.settings['COMPILER_FLAGS'] = build_file.settings['COMPILER_FLAGS'].gsub(/\s*-Werror\b/, '')
+      end
+    end
   end
 end

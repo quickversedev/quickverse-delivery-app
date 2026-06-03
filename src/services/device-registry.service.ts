@@ -25,7 +25,12 @@ interface DeviceRegistryRequest {
 async function getDeviceDetails(): Promise<
   Pick<
     DeviceRegistryRequest,
-    'deviceId' | 'deviceType' | 'deviceModel' | 'deviceBrand' | 'osVersion' | 'appVersion'
+    | 'deviceId'
+    | 'deviceType'
+    | 'deviceModel'
+    | 'deviceBrand'
+    | 'osVersion'
+    | 'appVersion'
   >
 > {
   const [uniqueId, model, brand, systemVersion, version] = await Promise.all([
@@ -46,7 +51,11 @@ async function getDeviceDetails(): Promise<
   };
 }
 
-function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  fallback: T,
+): Promise<T> {
   return Promise.race([
     promise,
     new Promise<T>(resolve => setTimeout(() => resolve(fallback), ms)),
@@ -56,6 +65,9 @@ function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T
 async function getFcmToken(): Promise<string> {
   try {
     const messaging = require('@react-native-firebase/messaging').default;
+    if (Platform.OS === 'ios') {
+      await messaging().registerDeviceForRemoteMessages();
+    }
     const authStatus = await messaging().requestPermission();
     const enabled =
       authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
@@ -73,7 +85,10 @@ async function getFcmToken(): Promise<string> {
   }
 }
 
-async function updateDeviceRegistry(phoneOverride?: string, tokenOverride?: string): Promise<void> {
+async function updateDeviceRegistry(
+  phoneOverride?: string,
+  tokenOverride?: string,
+): Promise<void> {
   const phone = phoneOverride || TokenStorage.getPhoneNumber();
   if (!phone) {
     return;
@@ -91,7 +106,10 @@ async function updateDeviceRegistry(phoneOverride?: string, tokenOverride?: stri
     }),
     withTimeout(getFcmToken(), 10000, ''),
     withTimeout(
-      getBestEffortCurrentLocation().catch(() => ({ latitude: 0, longitude: 0 })),
+      getBestEffortCurrentLocation().catch(() => ({
+        latitude: 0,
+        longitude: 0,
+      })),
       10000,
       { latitude: 0, longitude: 0 },
     ),
@@ -112,7 +130,12 @@ async function updateDeviceRegistry(phoneOverride?: string, tokenOverride?: stri
     loginTimestamp: now,
   };
 
-  console.log('[DeviceRegistry] Registering device — fcmToken:', fcmToken ? 'present' : 'MISSING', '| phone:', phone);
+  console.log(
+    '[DeviceRegistry] Registering device — fcmToken:',
+    fcmToken ? 'present' : 'MISSING',
+    '| phone:',
+    phone,
+  );
 
   await apiCall<void>(
     axiosInstance.post('/quickVerse/v1/updateDeviceRegistry', body, {
@@ -122,10 +145,16 @@ async function updateDeviceRegistry(phoneOverride?: string, tokenOverride?: stri
     }),
   );
 
-  console.log('[DeviceRegistry] Registration successful — fcmToken:', fcmToken.substring(0, 20) + '...');
+  console.log(
+    '[DeviceRegistry] Registration successful — fcmToken:',
+    fcmToken.substring(0, 20) + '...',
+  );
 }
 
-async function updateDeviceRegistrySafe(phone?: string, token?: string): Promise<void> {
+async function updateDeviceRegistrySafe(
+  phone?: string,
+  token?: string,
+): Promise<void> {
   try {
     await updateDeviceRegistry(phone, token);
   } catch (error) {
@@ -133,5 +162,9 @@ async function updateDeviceRegistrySafe(phone?: string, token?: string): Promise
   }
 }
 
-const deviceRegistryService = { updateDeviceRegistry, updateDeviceRegistrySafe, getFcmToken };
+const deviceRegistryService = {
+  updateDeviceRegistry,
+  updateDeviceRegistrySafe,
+  getFcmToken,
+};
 export default deviceRegistryService;
