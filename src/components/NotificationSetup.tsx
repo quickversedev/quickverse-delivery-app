@@ -46,10 +46,15 @@ async function requestNotificationPermission(): Promise<void> {
 async function displayNotification(
   remoteMessage: FirebaseMessagingTypes.RemoteMessage,
 ): Promise<void> {
-  const title = remoteMessage.notification?.title || remoteMessage.data?.title;
-  const body = remoteMessage.notification?.body || remoteMessage.data?.body;
+  const title = (
+    remoteMessage.notification?.title || remoteMessage.data?.title || ''
+  ).toString().trim();
+  const body = (
+    remoteMessage.notification?.body || remoteMessage.data?.body || ''
+  ).toString().trim();
 
   if (!title && !body) {
+    console.log('[Notifications] Skipping display — empty title and body');
     return;
   }
 
@@ -60,8 +65,8 @@ async function displayNotification(
   });
 
   await notifee.displayNotification({
-    title: title as string | undefined,
-    body: body as string | undefined,
+    title: title || undefined,
+    body: body || undefined,
     data: remoteMessage.data,
     android: {
       channelId,
@@ -80,7 +85,7 @@ function NotificationSetup(): null {
       await displayNotification(remoteMessage);
     });
 
-    messaging().onNotificationOpenedApp(remoteMessage => {
+    const unsubscribeOpenedApp = messaging().onNotificationOpenedApp(remoteMessage => {
       console.log(
         '[Notifications] Opened from background:',
         remoteMessage.messageId,
@@ -106,6 +111,7 @@ function NotificationSetup(): null {
 
     return () => {
       unsubscribeForeground();
+      unsubscribeOpenedApp();
       unsubscribeNotifee();
     };
   }, []);

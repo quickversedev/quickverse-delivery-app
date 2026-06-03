@@ -17,8 +17,13 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import useAuthStore from '../hooks/useAuthStore';
 import deliveryPartnerService from '../services/delivery-partner.service';
-import type { DeliveryPartnerOrder, DeliveryPartnerStats } from '../services/delivery-partner.service';
-import websocketService, { type OrderActionEvent } from '../services/websocket.service';
+import type {
+  DeliveryPartnerOrder,
+  DeliveryPartnerStats,
+} from '../services/delivery-partner.service';
+import websocketService, {
+  type OrderActionEvent,
+} from '../services/websocket.service';
 import LogoutConfirmationModal from '../components/modals/LogoutConfirmationModal';
 import BillSummaryCard from '../components/BillSummaryCard';
 import usePricingStore from '../store/pricingStore';
@@ -73,13 +78,23 @@ const HomeScreen: React.FC = () => {
   );
   const [activeTab, setActiveTab] = useState<'dashboard' | 'orders'>('orders');
   const [isLogoutModalVisible, setIsLogoutModalVisible] = useState(false);
-  const [partnerStats, setPartnerStats] = useState<DeliveryPartnerStats | null>(null);
+  const [partnerStats, setPartnerStats] = useState<DeliveryPartnerStats | null>(
+    null,
+  );
   const [isStatsLoading, setIsStatsLoading] = useState(false);
-  const [statsFilter, setStatsFilter] = useState<'daily' | 'weekly' | 'monthly' | 'allTime'>('daily');
+  const [statsFilter, setStatsFilter] = useState<
+    'daily' | 'weekly' | 'monthly' | 'allTime'
+  >('daily');
 
-  const [timeRangeFilter, setTimeRangeFilter] = useState<'all' | 'today' | 'week' | 'month'>('all');
-  const [expandedOrderIds, setExpandedOrderIds] = useState<Set<string>>(new Set());
-  const [expandedItemIds, setExpandedItemIds] = useState<Set<string>>(new Set());
+  const [timeRangeFilter, setTimeRangeFilter] = useState<
+    'all' | 'today' | 'week' | 'month'
+  >('all');
+  const [expandedOrderIds, setExpandedOrderIds] = useState<Set<string>>(
+    new Set(),
+  );
+  const [expandedItemIds, setExpandedItemIds] = useState<Set<string>>(
+    new Set(),
+  );
   const [wsConnected, setWsConnected] = useState(false);
 
   const { fetchPricing, getPricingValues } = usePricingStore();
@@ -136,8 +151,9 @@ const HomeScreen: React.FC = () => {
       }
     });
 
-    return Array.from(latestByOrderId.values())
-      .sort((a, b) => getOrderTimestamp(b) - getOrderTimestamp(a));
+    return Array.from(latestByOrderId.values()).sort(
+      (a, b) => getOrderTimestamp(b) - getOrderTimestamp(a),
+    );
   };
 
   const fetchCurrentLocation = async () => {
@@ -192,7 +208,9 @@ const HomeScreen: React.FC = () => {
     }
     setIsStatsLoading(true);
     try {
-      const data = await deliveryPartnerService.getDeliveryPartnerStats(partnerId);
+      const data = await deliveryPartnerService.getDeliveryPartnerStats(
+        partnerId,
+      );
       setPartnerStats(data);
     } catch (error) {
       console.error('Fetch partner stats failed', error);
@@ -215,15 +233,20 @@ const HomeScreen: React.FC = () => {
     }
   }, [activeTab, partnerId]);
 
-  const handleWebSocketEvent = useCallback((event: OrderActionEvent) => {
-    if (event.status?.toUpperCase().includes('CANCEL')) {
-      Alert.alert(
-        'Order Cancelled',
-        `Order #${event.orderId} from ${event.customerName || 'customer'} has been cancelled.`,
-      );
-    }
-    fetchAssignedOrders({ silent: true });
-  }, [partnerId]);
+  const handleWebSocketEvent = useCallback(
+    (event: OrderActionEvent) => {
+      if (event.status?.toUpperCase().includes('CANCEL')) {
+        Alert.alert(
+          'Order Cancelled',
+          `Order #${event.orderId} from ${
+            event.customerName || 'customer'
+          } has been cancelled.`,
+        );
+      }
+      fetchAssignedOrders({ silent: true });
+    },
+    [partnerId],
+  );
 
   useEffect(() => {
     if (!partnerId) {
@@ -274,7 +297,7 @@ const HomeScreen: React.FC = () => {
     return getOrderTimestamp(order);
   };
 
-  const LIVE_INNER_STATES = ['ACCEPTED', 'SHIPPED'];
+  const LIVE_INNER_STATES = ['ACCEPTED', 'SHIPPED', 'PENDING'];
   const isOrderLive = (o: DeliveryPartnerOrder) =>
     o.orderStatus?.toUpperCase() === 'PARTNER_ASSIGNED' &&
     LIVE_INNER_STATES.includes(o.orderDetails?.state?.toUpperCase() ?? '');
@@ -285,12 +308,20 @@ const HomeScreen: React.FC = () => {
   const getTimeRangeCutoff = (range: 'today' | 'week' | 'month'): number => {
     const now = new Date();
     if (range === 'today') {
-      return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+      return new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+      ).getTime();
     }
     if (range === 'week') {
       const day = now.getDay();
       const diff = day === 0 ? 6 : day - 1;
-      return new Date(now.getFullYear(), now.getMonth(), now.getDate() - diff).getTime();
+      return new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate() - diff,
+      ).getTime();
     }
     return new Date(now.getFullYear(), now.getMonth(), 1).getTime();
   };
@@ -298,7 +329,9 @@ const HomeScreen: React.FC = () => {
   const timeFilteredOrders =
     timeRangeFilter === 'all'
       ? pastOrders
-      : pastOrders.filter(o => getOrderEpochMs(o) >= getTimeRangeCutoff(timeRangeFilter));
+      : pastOrders.filter(
+          o => getOrderEpochMs(o) >= getTimeRangeCutoff(timeRangeFilter),
+        );
 
   const filteredOrders = timeFilteredOrders;
 
@@ -324,7 +357,9 @@ const HomeScreen: React.FC = () => {
     }
 
     return {
-      date: `${String(parsedDate.getDate()).padStart(2, '0')}/${String(parsedDate.getMonth() + 1).padStart(2, '0')}/${String(parsedDate.getFullYear()).slice(-2)}`,
+      date: `${String(parsedDate.getDate()).padStart(2, '0')}/${String(
+        parsedDate.getMonth() + 1,
+      ).padStart(2, '0')}/${String(parsedDate.getFullYear()).slice(-2)}`,
       time: parsedDate.toLocaleTimeString([], {
         hour: '2-digit',
         minute: '2-digit',
@@ -463,15 +498,24 @@ const HomeScreen: React.FC = () => {
   const renderOrderCard = (order: DeliveryPartnerOrder) => {
     const cardId = order.id || order.orderId;
     const isExpanded = expandedOrderIds.has(cardId);
-    const acceptedDateTime = formatOrderDateTime(order.orderDetails?.acceptedDate ?? null);
-    const completedDateTime = formatOrderDateTime(order.orderDetails?.completedDate ?? null);
+    const acceptedDateTime = formatOrderDateTime(
+      order.orderDetails?.acceptedDate ?? null,
+    );
+    const completedDateTime = formatOrderDateTime(
+      order.orderDetails?.completedDate ?? null,
+    );
     const orderDateTime = formatOrderDateTime(
       order.orderDetails?.creationTime ?? order.createdAt,
     );
     const totalAmount = order.orderDetails?.totalAmount ?? 0;
     const shopName = order.shopDetails?.name || 'Shop';
-    const customerName = order.orderDetails?.customerName || order.orderId || 'N/A';
-    const status = formatStatusLabel(order.orderDetails?.state?.toUpperCase() ?? order.orderStatus?.toUpperCase() ?? 'UNKNOWN');
+    const customerName =
+      order.orderDetails?.customerName || order.orderId || 'N/A';
+    const status = formatStatusLabel(
+      order.orderDetails?.state?.toUpperCase() ??
+        order.orderStatus?.toUpperCase() ??
+        'UNKNOWN',
+    );
 
     const shopId = order.orderDetails?.shopId ?? order.shopId;
     const paymentMethod =
@@ -482,7 +526,10 @@ const HomeScreen: React.FC = () => {
     );
     const customerCoordinate =
       customerAddress.latitude != null && customerAddress.longitude != null
-        ? { latitude: customerAddress.latitude, longitude: customerAddress.longitude }
+        ? {
+            latitude: customerAddress.latitude,
+            longitude: customerAddress.longitude,
+          }
         : null;
     const customerDistance = formatDistance(customerCoordinate);
 
@@ -497,15 +544,26 @@ const HomeScreen: React.FC = () => {
     const shopCoordinate =
       order.shopDetails?.address?.latitude != null &&
       order.shopDetails?.address?.longitude != null
-        ? { latitude: order.shopDetails.address.latitude, longitude: order.shopDetails.address.longitude }
+        ? {
+            latitude: order.shopDetails.address.latitude,
+            longitude: order.shopDetails.address.longitude,
+          }
         : order.shopDetails?.coordinates?.latitude != null &&
           order.shopDetails?.coordinates?.longitude != null
-        ? { latitude: order.shopDetails.coordinates.latitude, longitude: order.shopDetails.coordinates.longitude }
-        : order.shopDetails?.latitude != null && order.shopDetails?.longitude != null
-        ? { latitude: order.shopDetails.latitude, longitude: order.shopDetails.longitude }
+        ? {
+            latitude: order.shopDetails.coordinates.latitude,
+            longitude: order.shopDetails.coordinates.longitude,
+          }
+        : order.shopDetails?.latitude != null &&
+          order.shopDetails?.longitude != null
+        ? {
+            latitude: order.shopDetails.latitude,
+            longitude: order.shopDetails.longitude,
+          }
         : null;
     const shopDistance = formatDistance(shopCoordinate);
-    const shopImage = order.shopDetails?.banner || order.shopDetails?.logo || null;
+    const shopImage =
+      order.shopDetails?.banner || order.shopDetails?.logo || null;
 
     const orderDescription =
       order.orderDetails?.orderDescription ||
@@ -516,12 +574,23 @@ const HomeScreen: React.FC = () => {
     const amountExcludingDeliveryFee =
       order.orderDetails?.amountExcludingDeliveryFee ?? 0;
 
-    const serviceType: ServiceType = order.shopDetails?.category?.toLowerCase().includes('grocery') ? 'GROCERY' : 'FOOD';
+    const serviceType: ServiceType = order.shopDetails?.category
+      ?.toLowerCase()
+      .includes('grocery')
+      ? 'GROCERY'
+      : 'FOOD';
     const pricing = getPricingValues(serviceType);
-    const pricingCommission = pricing.commissionRate * amountExcludingDeliveryFee;
-    const pricingTaxableAmount = pricingCommission + pricing.deliveryFee + pricing.platformFee;
+    const pricingCommission =
+      pricing.commissionRate * amountExcludingDeliveryFee;
+    const pricingTaxableAmount =
+      pricingCommission + pricing.deliveryFee + pricing.platformFee;
     const pricingTaxes = Math.round(pricing.gstRate * pricingTaxableAmount);
-    const computedTotal = amountExcludingDeliveryFee + pricing.deliveryFee + pricing.platformFee + pricing.packagingCharges + pricingTaxes;
+    const computedTotal =
+      amountExcludingDeliveryFee +
+      pricing.deliveryFee +
+      pricing.platformFee +
+      pricing.packagingCharges +
+      pricingTaxes;
 
     return (
       <TouchableOpacity
@@ -534,7 +603,9 @@ const HomeScreen: React.FC = () => {
         <View style={styles.orderCardTopRow}>
           <View style={styles.orderCardHeaderLeft}>
             <Text style={styles.orderIdText}>{customerName}</Text>
-            <Text style={styles.orderCardOrderId}>#{order.orderId || order.id}</Text>
+            <Text style={styles.orderCardOrderId}>
+              #{order.orderId || order.id}
+            </Text>
             <Text style={styles.orderCardSummary}>
               {shopName} · {formatCurrency(computedTotal)}
             </Text>
@@ -591,7 +662,10 @@ const HomeScreen: React.FC = () => {
               <Text style={styles.sectionTitleInline}>Shop details</Text>
               <View style={styles.shopHeroRow}>
                 {shopImage ? (
-                  <Image source={{ uri: shopImage }} style={styles.shopHeroImage} />
+                  <Image
+                    source={{ uri: shopImage }}
+                    style={styles.shopHeroImage}
+                  />
                 ) : (
                   <View style={styles.shopHeroFallback}>
                     <Text style={styles.shopHeroFallbackText}>SHOP</Text>
@@ -650,7 +724,9 @@ const HomeScreen: React.FC = () => {
                   {expandedItemIds.has(cardId) &&
                     order.orderDetails!.orderItem.map(item => (
                       <View key={item.id} style={styles.itemRow}>
-                        <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>
+                        <Text style={styles.itemName} numberOfLines={1}>
+                          {item.name}
+                        </Text>
                         <Text style={styles.itemCount}>x{item.itemCount}</Text>
                       </View>
                     ))}
@@ -687,7 +763,9 @@ const HomeScreen: React.FC = () => {
                 }
                 activeOpacity={0.85}
               >
-                <Text style={styles.viewDetailsButtonText}>View Order Details</Text>
+                <Text style={styles.viewDetailsButtonText}>
+                  View Order Details
+                </Text>
               </TouchableOpacity>
             )}
           </>
@@ -723,7 +801,10 @@ const HomeScreen: React.FC = () => {
     );
     const customerCoordinate =
       customerAddress.latitude != null && customerAddress.longitude != null
-        ? { latitude: customerAddress.latitude, longitude: customerAddress.longitude }
+        ? {
+            latitude: customerAddress.latitude,
+            longitude: customerAddress.longitude,
+          }
         : null;
     const customerDistance = formatDistance(customerCoordinate);
 
@@ -737,30 +818,56 @@ const HomeScreen: React.FC = () => {
     const shopCoordinate =
       order.shopDetails?.address?.latitude != null &&
       order.shopDetails?.address?.longitude != null
-        ? { latitude: order.shopDetails.address.latitude, longitude: order.shopDetails.address.longitude }
+        ? {
+            latitude: order.shopDetails.address.latitude,
+            longitude: order.shopDetails.address.longitude,
+          }
         : order.shopDetails?.coordinates?.latitude != null &&
           order.shopDetails?.coordinates?.longitude != null
-        ? { latitude: order.shopDetails.coordinates.latitude, longitude: order.shopDetails.coordinates.longitude }
-        : order.shopDetails?.latitude != null && order.shopDetails?.longitude != null
-        ? { latitude: order.shopDetails.latitude, longitude: order.shopDetails.longitude }
+        ? {
+            latitude: order.shopDetails.coordinates.latitude,
+            longitude: order.shopDetails.coordinates.longitude,
+          }
+        : order.shopDetails?.latitude != null &&
+          order.shopDetails?.longitude != null
+        ? {
+            latitude: order.shopDetails.latitude,
+            longitude: order.shopDetails.longitude,
+          }
         : null;
     const shopDistance = formatDistance(shopCoordinate);
-    const shopImage = order.shopDetails?.banner || order.shopDetails?.logo || null;
+    const shopImage =
+      order.shopDetails?.banner || order.shopDetails?.logo || null;
 
     const orderDateTime = formatOrderDateTime(
       order.orderDetails?.creationTime ?? order.createdAt,
     );
 
-    const liveAmountExcludingDeliveryFee = order.orderDetails?.amountExcludingDeliveryFee ?? 0;
-    const liveServiceType: ServiceType = order.shopDetails?.category?.toLowerCase().includes('grocery') ? 'GROCERY' : 'FOOD';
+    const liveAmountExcludingDeliveryFee =
+      order.orderDetails?.amountExcludingDeliveryFee ?? 0;
+    const liveServiceType: ServiceType = order.shopDetails?.category
+      ?.toLowerCase()
+      .includes('grocery')
+      ? 'GROCERY'
+      : 'FOOD';
     const livePricing = getPricingValues(liveServiceType);
-    const liveCommission = livePricing.commissionRate * liveAmountExcludingDeliveryFee;
-    const liveTaxableAmount = liveCommission + livePricing.deliveryFee + livePricing.platformFee;
+    const liveCommission =
+      livePricing.commissionRate * liveAmountExcludingDeliveryFee;
+    const liveTaxableAmount =
+      liveCommission + livePricing.deliveryFee + livePricing.platformFee;
     const liveTaxes = Math.round(livePricing.gstRate * liveTaxableAmount);
-    const liveComputedTotal = liveAmountExcludingDeliveryFee + livePricing.deliveryFee + livePricing.platformFee + livePricing.packagingCharges + liveTaxes;
+    const liveComputedTotal =
+      liveAmountExcludingDeliveryFee +
+      livePricing.deliveryFee +
+      livePricing.platformFee +
+      livePricing.packagingCharges +
+      liveTaxes;
 
     return (
-      <View key={order.id || order.orderId} style={[styles.liveCard, { marginBottom: 12 }]}>
+      <View
+        key={order.id || order.orderId}
+        style={[styles.liveCard, { marginBottom: 12 }]}
+      >
         <View style={styles.livePulseRow}>
           <View style={styles.liveDot} />
           <Text style={styles.liveLabel}>Live Order</Text>
@@ -774,7 +881,9 @@ const HomeScreen: React.FC = () => {
           <Text style={styles.liveOrderId}>#{order.orderId || order.id}</Text>
           <View style={styles.liveStatePill}>
             <Text style={styles.liveStatePillText}>
-              {formatStatusLabel(order.orderDetails?.state?.toUpperCase() ?? 'UNKNOWN')}
+              {formatStatusLabel(
+                order.orderDetails?.state?.toUpperCase() ?? 'UNKNOWN',
+              )}
             </Text>
           </View>
         </View>
@@ -792,11 +901,20 @@ const HomeScreen: React.FC = () => {
             <Text style={styles.liveLocName}>
               {order.shopDetails?.name || `Shop ${shopId ?? 'N/A'}`}
             </Text>
-            <Text style={styles.liveLocAddress} numberOfLines={2}>{shopAddressText || 'Address unavailable'}</Text>
-            {shopDistance ? <Text style={styles.liveLocDistance}>{shopDistance}</Text> : null}
+            <Text style={styles.liveLocAddress} numberOfLines={2}>
+              {shopAddressText || 'Address unavailable'}
+            </Text>
+            {shopDistance ? (
+              <Text style={styles.liveLocDistance}>{shopDistance}</Text>
+            ) : null}
           </View>
           <TouchableOpacity
-            onPress={() => openDirections({ coordinate: shopCoordinate, fallbackQuery: shopAddressText || order.shopDetails?.name || '' })}
+            onPress={() =>
+              openDirections({
+                coordinate: shopCoordinate,
+                fallbackQuery: shopAddressText || order.shopDetails?.name || '',
+              })
+            }
             style={styles.liveNavButton}
             activeOpacity={0.8}
           >
@@ -808,18 +926,29 @@ const HomeScreen: React.FC = () => {
 
         {/* Drop */}
         <View style={styles.liveLocationRow}>
-          <View style={[styles.liveLocIconWrap, { backgroundColor: '#FEF2F2' }]}>
+          <View
+            style={[styles.liveLocIconWrap, { backgroundColor: '#FEF2F2' }]}
+          >
             <MapPin size={16} color="#EF4444" />
           </View>
           <View style={styles.liveLocInfo}>
             <Text style={styles.liveLocName}>
               {order.orderDetails?.customerName || 'Customer'}
             </Text>
-            <Text style={styles.liveLocAddress} numberOfLines={2}>{customerAddress.text}</Text>
-            {customerDistance ? <Text style={styles.liveLocDistance}>{customerDistance}</Text> : null}
+            <Text style={styles.liveLocAddress} numberOfLines={2}>
+              {customerAddress.text}
+            </Text>
+            {customerDistance ? (
+              <Text style={styles.liveLocDistance}>{customerDistance}</Text>
+            ) : null}
           </View>
           <TouchableOpacity
-            onPress={() => openDirections({ coordinate: customerCoordinate, fallbackQuery: customerAddress.text })}
+            onPress={() =>
+              openDirections({
+                coordinate: customerCoordinate,
+                fallbackQuery: customerAddress.text,
+              })
+            }
             style={[styles.liveNavButton, { backgroundColor: '#EF4444' }]}
             activeOpacity={0.8}
           >
@@ -830,7 +959,11 @@ const HomeScreen: React.FC = () => {
         {order.orderDetails?.customerMobile && (
           <TouchableOpacity
             style={styles.liveCallRow}
-            onPress={() => Linking.openURL(`tel:${String(order.orderDetails!.customerMobile).slice(-10)}`)}
+            onPress={() =>
+              Linking.openURL(
+                `tel:${String(order.orderDetails!.customerMobile).slice(-10)}`,
+              )
+            }
             activeOpacity={0.7}
           >
             <View style={styles.liveCallIconWrap}>
@@ -862,7 +995,9 @@ const HomeScreen: React.FC = () => {
             {expandedItemIds.has(liveCardId) &&
               order.orderDetails!.orderItem.map(item => (
                 <View key={item.id} style={styles.itemRow}>
-                  <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>
+                  <Text style={styles.itemName} numberOfLines={1}>
+                    {item.name}
+                  </Text>
                   <Text style={styles.itemCount}>x{item.itemCount}</Text>
                 </View>
               ))}
@@ -896,23 +1031,32 @@ const HomeScreen: React.FC = () => {
             }
             activeOpacity={0.85}
           >
-            <Text style={styles.liveViewDetailsButtonText}>View Order Details</Text>
+            <Text style={styles.liveViewDetailsButtonText}>
+              View Order Details
+            </Text>
           </TouchableOpacity>
         )}
       </View>
     );
   };
 
-  const statsFilterOptions: { key: 'daily' | 'weekly' | 'monthly' | 'allTime'; label: string }[] = [
+  const statsFilterOptions: {
+    key: 'daily' | 'weekly' | 'monthly' | 'allTime';
+    label: string;
+  }[] = [
     { key: 'daily', label: 'Today' },
     { key: 'weekly', label: 'This Week' },
     { key: 'monthly', label: 'This Month' },
     { key: 'allTime', label: 'All Time' },
   ];
 
-  const activeStatsData = statsFilter === 'allTime'
-    ? { count: partnerStats?.totalOrders ?? 0, earnings: partnerStats?.totalEarnings ?? 0 }
-    : partnerStats?.[statsFilter] ?? { count: 0, earnings: 0 };
+  const activeStatsData =
+    statsFilter === 'allTime'
+      ? {
+          count: partnerStats?.totalOrders ?? 0,
+          earnings: partnerStats?.totalEarnings ?? 0,
+        }
+      : partnerStats?.[statsFilter] ?? { count: 0, earnings: 0 };
 
   const DAILY_TARGET = 15;
   const XP_PER_ORDER = 5;
@@ -928,7 +1072,8 @@ const HomeScreen: React.FC = () => {
     { name: 'Platinum', minXp: 2500, stars: 4, color: '#8B5CF6' },
     { name: 'Diamond', minXp: 5000, stars: 5, color: '#06B6D4' },
   ];
-  const currentLevel = [...LEVELS].reverse().find(l => totalXp >= l.minXp) ?? LEVELS[0];
+  const currentLevel =
+    [...LEVELS].reverse().find(l => totalXp >= l.minXp) ?? LEVELS[0];
   const nextLevel = LEVELS[LEVELS.indexOf(currentLevel) + 1] ?? null;
   const levelMaxXp = nextLevel?.minXp ?? currentLevel.minXp;
 
@@ -938,7 +1083,10 @@ const HomeScreen: React.FC = () => {
       <View style={styles.backgroundGlowTwo} />
       <ScrollView
         style={styles.content}
-        contentContainerStyle={[styles.contentContainer, { paddingTop: insets.top + 12 }]}
+        contentContainerStyle={[
+          styles.contentContainer,
+          { paddingTop: insets.top + 12 },
+        ]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           activeTab === 'orders' ? (
@@ -1104,35 +1252,64 @@ const HomeScreen: React.FC = () => {
               <>
                 <View style={styles.grid}>
                   <View style={styles.statCard}>
-                    <View style={[styles.statAccent, { backgroundColor: '#0E6DFD' }]} />
+                    <View
+                      style={[
+                        styles.statAccent,
+                        { backgroundColor: '#0E6DFD' },
+                      ]}
+                    />
                     <Text style={styles.statLabel}>Orders</Text>
-                    <Text style={styles.statValue}>{activeStatsData.count}</Text>
+                    <Text style={styles.statValue}>
+                      {activeStatsData.count}
+                    </Text>
                   </View>
                   <View style={styles.statCard}>
-                    <View style={[styles.statAccent, { backgroundColor: '#16A34A' }]} />
+                    <View
+                      style={[
+                        styles.statAccent,
+                        { backgroundColor: '#16A34A' },
+                      ]}
+                    />
                     <Text style={styles.statLabel}>Earnings</Text>
-                    <Text style={styles.statValue}>Rs {activeStatsData.earnings.toFixed(2)}</Text>
+                    <Text style={styles.statValue}>
+                      Rs {activeStatsData.earnings.toFixed(2)}
+                    </Text>
                   </View>
                 </View>
                 <View style={styles.grid}>
                   <View style={styles.gamifyCard}>
                     <Text style={styles.gamifyTitle}>Today's Target</Text>
-                    <Text style={styles.gamifyTargetLabel}>{DAILY_TARGET} Orders</Text>
+                    <Text style={styles.gamifyTargetLabel}>
+                      {DAILY_TARGET} Orders
+                    </Text>
                     <View style={styles.progressRingWrap}>
                       <Svg width={80} height={80}>
                         <SvgCircle
-                          cx={40} cy={40} r={32}
+                          cx={40}
+                          cy={40}
+                          r={32}
                           stroke="#E2E8F0"
                           strokeWidth={7}
                           fill="none"
                         />
                         <SvgCircle
-                          cx={40} cy={40} r={32}
-                          stroke={dailyCompleted >= DAILY_TARGET ? '#16A34A' : '#7C3AED'}
+                          cx={40}
+                          cy={40}
+                          r={32}
+                          stroke={
+                            dailyCompleted >= DAILY_TARGET
+                              ? '#16A34A'
+                              : '#7C3AED'
+                          }
                           strokeWidth={7}
                           fill="none"
                           strokeDasharray={`${2 * Math.PI * 32}`}
-                          strokeDashoffset={`${2 * Math.PI * 32 * (1 - Math.min(dailyCompleted / DAILY_TARGET, 1))}`}
+                          strokeDashoffset={`${
+                            2 *
+                            Math.PI *
+                            32 *
+                            (1 - Math.min(dailyCompleted / DAILY_TARGET, 1))
+                          }`}
                           strokeLinecap="round"
                           rotation="-90"
                           origin="40,40"
@@ -1151,7 +1328,12 @@ const HomeScreen: React.FC = () => {
 
                   <View style={styles.gamifyCard}>
                     <Text style={styles.gamifyTitle}>Captain Level</Text>
-                    <Text style={[styles.gamifyLevelName, { color: currentLevel.color }]}>
+                    <Text
+                      style={[
+                        styles.gamifyLevelName,
+                        { color: currentLevel.color },
+                      ]}
+                    >
                       {currentLevel.name}
                     </Text>
                     <View style={styles.starsRow}>
@@ -1161,13 +1343,18 @@ const HomeScreen: React.FC = () => {
                         </Text>
                       ))}
                     </View>
-                    <Text style={styles.xpText}>{totalXp} / {levelMaxXp} XP</Text>
+                    <Text style={styles.xpText}>
+                      {totalXp} / {levelMaxXp} XP
+                    </Text>
                     <View style={styles.xpBarBg}>
                       <View
                         style={[
                           styles.xpBarFill,
                           {
-                            width: `${Math.min((totalXp / (levelMaxXp || 1)) * 100, 100)}%`,
+                            width: `${Math.min(
+                              (totalXp / (levelMaxXp || 1)) * 100,
+                              100,
+                            )}%`,
                             backgroundColor: currentLevel.color,
                           },
                         ]}
@@ -1195,18 +1382,33 @@ const HomeScreen: React.FC = () => {
                           ]}
                         >
                           <Text style={styles.leaderboardRank}>
-                            {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `#${index + 1}`}
+                            {index === 0
+                              ? '🥇'
+                              : index === 1
+                              ? '🥈'
+                              : index === 2
+                              ? '🥉'
+                              : `#${index + 1}`}
                           </Text>
                           <Image
                             source={{ uri: rider.profilePicture || undefined }}
                             style={styles.leaderboardAvatar}
                           />
                           <View style={styles.leaderboardInfo}>
-                            <Text style={[styles.leaderboardName, isCurrentUser && styles.leaderboardNameHighlight]} numberOfLines={1}>
-                              {rider.name}{isCurrentUser ? ' (You)' : ''}
+                            <Text
+                              style={[
+                                styles.leaderboardName,
+                                isCurrentUser &&
+                                  styles.leaderboardNameHighlight,
+                              ]}
+                              numberOfLines={1}
+                            >
+                              {rider.name}
+                              {isCurrentUser ? ' (You)' : ''}
                             </Text>
                             <Text style={styles.leaderboardSub}>
-                              {rider.deliveries} orders · Rs {rider.earnings.toFixed(2)}
+                              {rider.deliveries} orders · Rs{' '}
+                              {rider.earnings.toFixed(2)}
                             </Text>
                           </View>
                         </View>
@@ -1253,12 +1455,14 @@ const HomeScreen: React.FC = () => {
                   style={styles.filterRow}
                   contentContainerStyle={styles.filterRowContent}
                 >
-                  {([
-                    { key: 'all', label: 'All' },
-                    { key: 'today', label: 'Today' },
-                    { key: 'week', label: 'This Week' },
-                    { key: 'month', label: 'This Month' },
-                  ] as const).map(item => (
+                  {(
+                    [
+                      { key: 'all', label: 'All' },
+                      { key: 'today', label: 'Today' },
+                      { key: 'week', label: 'This Week' },
+                      { key: 'month', label: 'This Month' },
+                    ] as const
+                  ).map(item => (
                     <TouchableOpacity
                       key={item.key}
                       style={[
@@ -1271,7 +1475,8 @@ const HomeScreen: React.FC = () => {
                       <Text
                         style={[
                           styles.filterChipText,
-                          timeRangeFilter === item.key && styles.filterChipTextActive,
+                          timeRangeFilter === item.key &&
+                            styles.filterChipTextActive,
                         ]}
                       >
                         {item.label}

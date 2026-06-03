@@ -12,10 +12,18 @@ import { name as appName } from './app.json';
 
 messaging().setBackgroundMessageHandler(async remoteMessage => {
   try {
-    const title = remoteMessage.notification?.title || remoteMessage.data?.title;
-    const body = remoteMessage.notification?.body || remoteMessage.data?.body;
+    // FCM auto-displays messages that contain a `notification` payload.
+    // Only manually display data-only messages to avoid duplicates.
+    if (remoteMessage.notification) {
+      console.log('[FCM] Skipping background display — notification payload already shown by FCM');
+      return;
+    }
+
+    const title = remoteMessage.data?.title;
+    const body = remoteMessage.data?.body;
 
     if (!title && !body) {
+      console.log('[FCM] Skipping background display — no title or body in data');
       return;
     }
 
