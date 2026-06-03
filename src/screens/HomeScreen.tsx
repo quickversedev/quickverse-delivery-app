@@ -827,6 +827,22 @@ const HomeScreen: React.FC = () => {
           </TouchableOpacity>
         </View>
 
+        {order.orderDetails?.customerMobile && (
+          <TouchableOpacity
+            style={styles.liveCallRow}
+            onPress={() => Linking.openURL(`tel:${String(order.orderDetails!.customerMobile).slice(-10)}`)}
+            activeOpacity={0.7}
+          >
+            <View style={styles.liveCallIconWrap}>
+              <Phone size={14} color="#FFFFFF" />
+            </View>
+            <Text style={styles.liveCallText}>
+              {String(order.orderDetails.customerMobile).slice(-10)}
+            </Text>
+            <Text style={styles.liveCallAction}>Call Customer</Text>
+          </TouchableOpacity>
+        )}
+
         {(order.orderDetails?.orderItem?.length ?? 0) > 0 && (
           <>
             <TouchableOpacity
@@ -2143,6 +2159,35 @@ const styles = StyleSheet.create({
     backgroundColor: '#E2E8F0',
     marginLeft: 17,
     marginVertical: 1,
+  },
+  liveCallRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F0F9FF',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginTop: 8,
+  },
+  liveCallIconWrap: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#22C55E',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  liveCallText: {
+    fontSize: 13,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#0F172A',
+    flex: 1,
+  },
+  liveCallAction: {
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#0E6DFD',
   },
   liveTimelineH: {
     flexDirection: 'row',
