@@ -25,6 +25,7 @@ import websocketService, {
   type OrderActionEvent,
 } from '../services/websocket.service';
 import LogoutConfirmationModal from '../components/modals/LogoutConfirmationModal';
+import OtpVerificationModal from '../components/modals/OtpVerificationModal';
 import BillSummaryCard from '../components/BillSummaryCard';
 import usePricingStore from '../store/pricingStore';
 import type { ServiceType } from '../types/pricing';
@@ -96,6 +97,16 @@ const HomeScreen: React.FC = () => {
     new Set(),
   );
   const [wsConnected, setWsConnected] = useState(false);
+  const [stageLoadingOrderId, setStageLoadingOrderId] = useState<string | null>(null);
+  const [otpModalVisible, setOtpModalVisible] = useState(false);
+  const [otpModalConfig, setOtpModalConfig] = useState<{
+    orderId: string;
+    title: string;
+    message: string;
+    apiAction: 'pickup' | 'completeDelivery';
+  } | null>(null);
+  const [otpError, setOtpError] = useState('');
+  const [otpLoading, setOtpLoading] = useState(false);
 
   const { fetchPricing, getPricingValues } = usePricingStore();
 
@@ -297,7 +308,7 @@ const HomeScreen: React.FC = () => {
     return getOrderTimestamp(order);
   };
 
-  const LIVE_INNER_STATES = ['ACCEPTED', 'SHIPPED', 'PENDING'];
+  const LIVE_INNER_STATES = ['ACCEPTED', 'PARTNER_ACCEPTED', 'SHIPPED', 'PENDING', 'ARRIVED_AT_STORE', 'IN_TRANSIT', 'REACHED_LOCATION'];
   const isOrderLive = (o: DeliveryPartnerOrder) =>
     o.orderStatus?.toUpperCase() === 'PARTNER_ASSIGNED' &&
     LIVE_INNER_STATES.includes(o.orderDetails?.state?.toUpperCase() ?? '');
@@ -787,6 +798,88 @@ const HomeScreen: React.FC = () => {
     return idx >= 0 ? idx : -1;
   };
 
+  const DELIVERY_STAGES = [
+    { stateMatch: ['ACCEPTED', 'PARTNER_ACCEPTED'], buttonLabel: 'Arrived at Store', requiresOtp: false, apiAction: 'arriveStore' as const },
+    { stateMatch: ['ARRIVED_AT_STORE'], buttonLabel: 'Pickup Order', requiresOtp: true,
+      otpTitle: 'Pickup Verification', otpMessage: 'Enter the 4-digit OTP from the restaurant', apiAction: 'pickup' as const },
+    { stateMatch: ['IN_TRANSIT'], buttonLabel: 'Arrived at Destination', requiresOtp: false, apiAction: 'arriveDestination' as const },
+    { stateMatch: ['REACHED_LOCATION'], buttonLabel: 'Complete Delivery', requiresOtp: true,
+      otpTitle: 'Delivery Verification', otpMessage: 'Enter the 4-digit OTP from the customer', apiAction: 'completeDelivery' as const },
+  ];
+
+  const getDeliveryStageForOrder = (order: DeliveryPartnerOrder) => {
+    const state = order.orderDetails?.state?.toUpperCase() ?? '';
+    return DELIVERY_STAGES.find(stage => stage.stateMatch.includes(state)) ?? null;
+  };
+
+  const handleStageAction = async (order: DeliveryPartnerOrder) => {
+    const stage = getDeliveryStageForOrder(order);
+    if (!stage) return;
+
+    const orderMasterId = order.id;
+
+    if (stage.requiresOtp) {
+      setOtpModalConfig({
+        orderId: orderMasterId,
+        title: stage.otpTitle!,
+        message: stage.otpMessage!,
+        apiAction: stage.apiAction as 'pickup' | 'completeDelivery',
+      });
+      setOtpError('');
+      setOtpModalVisible(true);
+      return;
+    }
+
+    setStageLoadingOrderId(orderMasterId);
+    try {
+      if (stage.apiAction === 'arriveStore') {
+        await deliveryPartnerService.updateAssignedOrderStatus(orderMasterId, 'PARTNER_ACCEPTED');
+        await deliveryPartnerService.arriveAtStore(orderMasterId);
+      } else if (stage.apiAction === 'arriveDestination') {
+        await deliveryPartnerService.arriveAtDestination(orderMasterId);
+      }
+      await fetchAssignedOrders({ silent: true });
+    } catch (error: any) {
+      Alert.alert(
+        'Action Failed',
+        error?.message || 'Unable to update order status. Please try again.',
+      );
+    } finally {
+      setStageLoadingOrderId(null);
+    }
+  };
+
+  const handleOtpSubmit = async (otp: string) => {
+    if (!otpModalConfig) return;
+
+    setOtpLoading(true);
+    setOtpError('');
+    try {
+      if (otpModalConfig.apiAction === 'pickup') {
+        await deliveryPartnerService.pickupOrder(otpModalConfig.orderId, otp);
+      } else {
+        await deliveryPartnerService.completeDelivery(otpModalConfig.orderId, otp);
+      }
+      setOtpModalVisible(false);
+      setOtpModalConfig(null);
+      await fetchAssignedOrders({ silent: true });
+    } catch (error: any) {
+      const fallback = otpModalConfig.apiAction === 'pickup'
+        ? 'Invalid OTP. Please check with the restaurant.'
+        : 'Invalid OTP. Please check with the customer.';
+      setOtpError(error?.message || fallback);
+    } finally {
+      setOtpLoading(false);
+    }
+  };
+
+  const handleOtpCancel = () => {
+    setOtpModalVisible(false);
+    setOtpModalConfig(null);
+    setOtpError('');
+    setOtpLoading(false);
+  };
+
   const renderLiveOrderCard = (order: DeliveryPartnerOrder) => {
     const liveCardId = order.id || order.orderId;
     const orderStatus = order.orderStatus?.toUpperCase() ?? '';
@@ -1019,6 +1112,28 @@ const HomeScreen: React.FC = () => {
           commissionRate={livePricing.commissionRate}
           gstRate={livePricing.gstRate}
         />
+
+        {(() => {
+          const stage = getDeliveryStageForOrder(order);
+          if (!stage) return null;
+          const isLoading = stageLoadingOrderId === order.id;
+          return (
+            <TouchableOpacity
+              style={styles.stageActionButton}
+              onPress={() => handleStageAction(order)}
+              disabled={isLoading}
+              activeOpacity={0.85}
+            >
+              {isLoading ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Text style={styles.stageActionButtonText}>
+                  {stage.buttonLabel}
+                </Text>
+              )}
+            </TouchableOpacity>
+          );
+        })()}
 
         {!!order.orderDetails?.orderLink && (
           <TouchableOpacity
@@ -1501,6 +1616,15 @@ const HomeScreen: React.FC = () => {
         visible={isLogoutModalVisible}
         onCancel={() => setIsLogoutModalVisible(false)}
         onConfirm={handleConfirmLogout}
+      />
+      <OtpVerificationModal
+        visible={otpModalVisible}
+        title={otpModalConfig?.title ?? ''}
+        message={otpModalConfig?.message ?? ''}
+        isLoading={otpLoading}
+        errorText={otpError}
+        onSubmit={handleOtpSubmit}
+        onCancel={handleOtpCancel}
       />
     </View>
   );
@@ -2345,6 +2469,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: 8,
+  },
+  stageActionButton: {
+    marginTop: 12,
+    borderRadius: 10,
+    backgroundColor: '#16A34A',
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+  },
+  stageActionButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontFamily: FONT_FAMILY.outfitExtraBold,
   },
   liveViewDetailsButton: {
     marginTop: 12,

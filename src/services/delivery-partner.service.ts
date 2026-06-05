@@ -473,7 +473,7 @@ const getAssignedOrdersByPartnerId = async (
 
 const updateAssignedOrderStatus = async (
   orderMasterId: string,
-  status: 'ACCEPTED' | 'REJECTED',
+  status: 'ACCEPTED' | 'REJECTED' | 'PARTNER_ACCEPTED',
 ): Promise<void> => {
   const sessionKey = TokenStorage.getToken();
 
@@ -543,6 +543,76 @@ const updateDeliveryPartnerLocation = async (
   );
 };
 
+const arriveAtStore = async (orderMasterId: string): Promise<void> => {
+  const sessionKey = TokenStorage.getToken();
+  await apiCall(
+    axiosInstance.patch(`/v1/order-master/${orderMasterId}/arriveStore`, null, {
+      headers: {
+        SessionKey: sessionKey || '',
+        'Request-Origin': 'CAPTAIN',
+      },
+      validateStatus: status => status >= 200 && status < 400,
+    }),
+  );
+};
+
+const pickupOrder = async (
+  orderMasterId: string,
+  otp: string,
+): Promise<void> => {
+  const sessionKey = TokenStorage.getToken();
+  await apiCall(
+    axiosInstance.patch(`/v1/order-master/${orderMasterId}/pickup`, null, {
+      params: { otp },
+      headers: {
+        SessionKey: sessionKey || '',
+        'Request-Origin': 'CAPTAIN',
+      },
+      validateStatus: status => status >= 200 && status < 400,
+    }),
+  );
+};
+
+const arriveAtDestination = async (
+  orderMasterId: string,
+): Promise<void> => {
+  const sessionKey = TokenStorage.getToken();
+  await apiCall(
+    axiosInstance.patch(
+      `/v1/order-master/${orderMasterId}/arriveDestination`,
+      null,
+      {
+        headers: {
+          SessionKey: sessionKey || '',
+          'Request-Origin': 'CAPTAIN',
+        },
+        validateStatus: status => status >= 200 && status < 400,
+      },
+    ),
+  );
+};
+
+const completeDelivery = async (
+  orderMasterId: string,
+  otp: string,
+): Promise<void> => {
+  const sessionKey = TokenStorage.getToken();
+  await apiCall(
+    axiosInstance.patch(
+      `/v1/order-master/${orderMasterId}/completeDelivery`,
+      null,
+      {
+        params: { otp },
+        headers: {
+          SessionKey: sessionKey || '',
+          'Request-Origin': 'CAPTAIN',
+        },
+        validateStatus: status => status >= 200 && status < 400,
+      },
+    ),
+  );
+};
+
 const deliveryPartnerService = {
   getDeliveryPartnerById,
   toggleDeliveryPartnerOnlineStatus,
@@ -550,6 +620,10 @@ const deliveryPartnerService = {
   updateAssignedOrderStatus,
   updateDeliveryPartnerLocation,
   getDeliveryPartnerStats,
+  arriveAtStore,
+  pickupOrder,
+  arriveAtDestination,
+  completeDelivery,
 };
 
 export default deliveryPartnerService;
