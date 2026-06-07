@@ -97,7 +97,9 @@ const HomeScreen: React.FC = () => {
     new Set(),
   );
   const [wsConnected, setWsConnected] = useState(false);
-  const [stageLoadingOrderId, setStageLoadingOrderId] = useState<string | null>(null);
+  const [stageLoadingOrderId, setStageLoadingOrderId] = useState<string | null>(
+    null,
+  );
   const [otpModalVisible, setOtpModalVisible] = useState(false);
   const [otpModalConfig, setOtpModalConfig] = useState<{
     orderId: string;
@@ -308,11 +310,13 @@ const HomeScreen: React.FC = () => {
     return getOrderTimestamp(order);
   };
 
-  const LIVE_INNER_STATES = ['ACCEPTED', 'PARTNER_ACCEPTED', 'SHIPPED', 'PENDING', 'ARRIVED_AT_STORE', 'IN_TRANSIT', 'REACHED_LOCATION'];
+  const LIVE_INNER_STATES = ['ACCEPTED', 'SHIPPED', 'PENDING'];
+
   const isOrderLive = (o: DeliveryPartnerOrder) =>
-    o.orderStatus?.toUpperCase() === 'PARTNER_ASSIGNED' &&
     LIVE_INNER_STATES.includes(o.orderDetails?.state?.toUpperCase() ?? '');
+
   const liveOrders = orders.filter(isOrderLive);
+
   const liveOrderIds = new Set(liveOrders.map(o => o.id || o.orderId));
   const pastOrders = orders.filter(o => !liveOrderIds.has(o.id || o.orderId));
 
@@ -799,17 +803,43 @@ const HomeScreen: React.FC = () => {
   };
 
   const DELIVERY_STAGES = [
-    { stateMatch: ['ACCEPTED', 'PARTNER_ACCEPTED'], buttonLabel: 'Arrived at Store', requiresOtp: false, apiAction: 'arriveStore' as const },
-    { stateMatch: ['ARRIVED_AT_STORE'], buttonLabel: 'Pickup Order', requiresOtp: true,
-      otpTitle: 'Pickup Verification', otpMessage: 'Enter the 4-digit OTP from the restaurant', apiAction: 'pickup' as const },
-    { stateMatch: ['IN_TRANSIT'], buttonLabel: 'Arrived at Destination', requiresOtp: false, apiAction: 'arriveDestination' as const },
-    { stateMatch: ['REACHED_LOCATION'], buttonLabel: 'Complete Delivery', requiresOtp: true,
-      otpTitle: 'Delivery Verification', otpMessage: 'Enter the 4-digit OTP from the customer', apiAction: 'completeDelivery' as const },
+    {
+      stateMatch: ['ACCEPTED', 'PARTNER_ASSIGNED'],
+      buttonLabel: 'Arrived at Store',
+      requiresOtp: false,
+      apiAction: 'arriveStore' as const,
+    },
+    {
+      stateMatch: ['ARRIVED_AT_STORE'],
+      buttonLabel: 'Pickup Order',
+      requiresOtp: true,
+      otpTitle: 'Pickup Verification',
+      otpMessage: 'Enter the 4-digit OTP from the restaurant',
+      apiAction: 'pickup' as const,
+    },
+    {
+      stateMatch: ['ORDER_PICKED_UP'],
+      buttonLabel: 'Arrived at Destination',
+      requiresOtp: false,
+      apiAction: 'arriveDestination' as const,
+    },
+    {
+      stateMatch: ['REACHED_LOCATION'],
+      buttonLabel: 'Complete Delivery',
+      requiresOtp: true,
+      otpTitle: 'Delivery Verification',
+      otpMessage: 'Enter the 4-digit OTP from the customer',
+      apiAction: 'completeDelivery' as const,
+    },
   ];
 
   const getDeliveryStageForOrder = (order: DeliveryPartnerOrder) => {
-    const state = order.orderDetails?.state?.toUpperCase() ?? '';
-    return DELIVERY_STAGES.find(stage => stage.stateMatch.includes(state)) ?? null;
+    console.log('Order Status : ', order.orderStatus);
+    const state = order.orderStatus?.toUpperCase() ?? '';
+    console.log(state);
+    return (
+      DELIVERY_STAGES.find(stage => stage.stateMatch.includes(state)) ?? null
+    );
   };
 
   const handleStageAction = async (order: DeliveryPartnerOrder) => {
@@ -818,32 +848,32 @@ const HomeScreen: React.FC = () => {
 
     const orderMasterId = order.id;
 
-    if (stage.requiresOtp) {
-      setOtpModalConfig({
-        orderId: orderMasterId,
-        title: stage.otpTitle!,
-        message: stage.otpMessage!,
-        apiAction: stage.apiAction as 'pickup' | 'completeDelivery',
-      });
-      setOtpError('');
-      setOtpModalVisible(true);
-      return;
-    }
+    // if (stage.requiresOtp) {
+    //   setOtpModalConfig({
+    //     orderId: orderMasterId,
+    //     title: stage.otpTitle!,
+    //     message: stage.otpMessage!,
+    //     apiAction: stage.apiAction as 'pickup' | 'completeDelivery',
+    //   });
+    //   setOtpError('');
+    //   setOtpModalVisible(true);
+    //   return;
+    // }
 
     setStageLoadingOrderId(orderMasterId);
     try {
       if (stage.apiAction === 'arriveStore') {
-        await deliveryPartnerService.updateAssignedOrderStatus(orderMasterId, 'PARTNER_ACCEPTED');
         await deliveryPartnerService.arriveAtStore(orderMasterId);
+      } else if (stage.apiAction === 'pickup') {
+        await deliveryPartnerService.pickupOrder(orderMasterId);
       } else if (stage.apiAction === 'arriveDestination') {
         await deliveryPartnerService.arriveAtDestination(orderMasterId);
+      } else if (stage.apiAction === 'completeDelivery') {
+        await deliveryPartnerService.completeDelivery(orderMasterId);
       }
       await fetchAssignedOrders({ silent: true });
     } catch (error: any) {
-      Alert.alert(
-        'Action Failed',
-        error?.message || 'Unable to update order status. Please try again.',
-      );
+      console.log('Error : ', error);
     } finally {
       setStageLoadingOrderId(null);
     }
@@ -856,17 +886,18 @@ const HomeScreen: React.FC = () => {
     setOtpError('');
     try {
       if (otpModalConfig.apiAction === 'pickup') {
-        await deliveryPartnerService.pickupOrder(otpModalConfig.orderId, otp);
+        await deliveryPartnerService.pickupOrder(otpModalConfig.orderId);
       } else {
-        await deliveryPartnerService.completeDelivery(otpModalConfig.orderId, otp);
+        await deliveryPartnerService.completeDelivery(otpModalConfig.orderId);
       }
       setOtpModalVisible(false);
       setOtpModalConfig(null);
       await fetchAssignedOrders({ silent: true });
     } catch (error: any) {
-      const fallback = otpModalConfig.apiAction === 'pickup'
-        ? 'Invalid OTP. Please check with the restaurant.'
-        : 'Invalid OTP. Please check with the customer.';
+      const fallback =
+        otpModalConfig.apiAction === 'pickup'
+          ? 'Invalid OTP. Please check with the restaurant.'
+          : 'Invalid OTP. Please check with the customer.';
       setOtpError(error?.message || fallback);
     } finally {
       setOtpLoading(false);
@@ -1117,6 +1148,7 @@ const HomeScreen: React.FC = () => {
           const stage = getDeliveryStageForOrder(order);
           if (!stage) return null;
           const isLoading = stageLoadingOrderId === order.id;
+
           return (
             <TouchableOpacity
               style={styles.stageActionButton}

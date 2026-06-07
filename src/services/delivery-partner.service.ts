@@ -473,7 +473,7 @@ const getAssignedOrdersByPartnerId = async (
 
 const updateAssignedOrderStatus = async (
   orderMasterId: string,
-  status: 'ACCEPTED' | 'REJECTED' | 'PARTNER_ACCEPTED',
+  status: 'ACCEPTED' | 'REJECTED' | 'PARTNER_ACCEPTED' | 'ARRIVED_AT_STORE',
 ): Promise<void> => {
   const sessionKey = TokenStorage.getToken();
 
@@ -556,14 +556,10 @@ const arriveAtStore = async (orderMasterId: string): Promise<void> => {
   );
 };
 
-const pickupOrder = async (
-  orderMasterId: string,
-  otp: string,
-): Promise<void> => {
+const pickupOrder = async (orderMasterId: string): Promise<void> => {
   const sessionKey = TokenStorage.getToken();
   await apiCall(
     axiosInstance.patch(`/v1/order-master/${orderMasterId}/pickup`, null, {
-      params: { otp },
       headers: {
         SessionKey: sessionKey || '',
         'Request-Origin': 'CAPTAIN',
@@ -573,9 +569,7 @@ const pickupOrder = async (
   );
 };
 
-const arriveAtDestination = async (
-  orderMasterId: string,
-): Promise<void> => {
+const arriveAtDestination = async (orderMasterId: string): Promise<void> => {
   const sessionKey = TokenStorage.getToken();
   await apiCall(
     axiosInstance.patch(
@@ -592,17 +586,13 @@ const arriveAtDestination = async (
   );
 };
 
-const completeDelivery = async (
-  orderMasterId: string,
-  otp: string,
-): Promise<void> => {
+const completeDelivery = async (orderMasterId: string): Promise<void> => {
   const sessionKey = TokenStorage.getToken();
   await apiCall(
     axiosInstance.patch(
       `/v1/order-master/${orderMasterId}/completeDelivery`,
       null,
       {
-        params: { otp },
         headers: {
           SessionKey: sessionKey || '',
           'Request-Origin': 'CAPTAIN',
