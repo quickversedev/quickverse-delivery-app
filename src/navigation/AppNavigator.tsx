@@ -1,15 +1,18 @@
 import React, { useEffect } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import LoginScreen from '../screens/LoginScreen';
-import OTPScreen from '../screens/OTPScreen';
-import HomeScreen from '../screens/HomeScreen';
-import ProfileScreen from '../screens/ProfileScreen';
-import OrderWebViewScreen from '../screens/OrderWebViewScreen';
+import {
+  LoginScreen,
+  OTPScreen,
+  OrderDeliveryScreen,
+  OrderWebViewScreen,
+  ProfileScreen,
+  HomeScreen,
+} from '../screens';
 import LoadingScreen from '../components/LoadingScreen';
 import useAuthStore from '../hooks/useAuthStore';
 import { rehydrateAuthStore } from '../store/authStore';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { DeliveryPartnerOrder } from '../services/delivery-partner.service';
 
 type AuthStackParamList = {
   Login: undefined;
@@ -20,6 +23,7 @@ type AppStackParamList = {
   Home: undefined;
   Profile: undefined;
   OrderWebView: { url: string; title?: string };
+  OrderDelivery: { order: DeliveryPartnerOrder };
 };
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
@@ -48,6 +52,7 @@ const MainAppNavigator: React.FC = () => {
       <AppStack.Screen name="Home" component={HomeScreen} />
       <AppStack.Screen name="Profile" component={ProfileScreen} />
       <AppStack.Screen name="OrderWebView" component={OrderWebViewScreen} />
+      <AppStack.Screen name="OrderDelivery" component={OrderDeliveryScreen} />
     </AppStack.Navigator>
   );
 };

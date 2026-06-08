@@ -55,6 +55,7 @@ type AppStackParamList = {
   Home: undefined;
   Profile: undefined;
   OrderWebView: { url: string; title?: string };
+  OrderDelivery: { order: DeliveryPartnerOrder };
 };
 
 type ParsedCustomerAddress = {
@@ -315,10 +316,15 @@ const HomeScreen: React.FC = () => {
   const isOrderLive = (o: DeliveryPartnerOrder) =>
     LIVE_INNER_STATES.includes(o.orderDetails?.state?.toUpperCase() ?? '');
 
-  const liveOrders = orders.filter(isOrderLive);
+  const clearOrders = orders.filter(o => o.orderStatus !== 'UNASSIGNED');
+
+  const liveOrders = clearOrders.filter(isOrderLive);
 
   const liveOrderIds = new Set(liveOrders.map(o => o.id || o.orderId));
-  const pastOrders = orders.filter(o => !liveOrderIds.has(o.id || o.orderId));
+
+  const pastOrders = clearOrders.filter(
+    o => !liveOrderIds.has(o.id || o.orderId),
+  );
 
   const getTimeRangeCutoff = (range: 'today' | 'week' | 'month'): number => {
     const now = new Date();
@@ -911,64 +917,290 @@ const HomeScreen: React.FC = () => {
     setOtpLoading(false);
   };
 
+  // const renderLiveOrderCard = (order: DeliveryPartnerOrder) => {
+  //   const liveCardId = order.id || order.orderId;
+  //   const orderStatus = order.orderStatus?.toUpperCase() ?? '';
+  //   const currentStepIdx = getTimelineIndex(orderStatus);
+  //   const shopId = order.orderDetails?.shopId ?? order.shopId;
+  //   const liveItemCount = order.orderDetails?.totalItemCount ?? 0;
+  //   const paymentMethod =
+  //     order.orderDetails?.paymentMethod ?? order.paymentMethod ?? 'N/A';
+  //   const totalAmount = order.orderDetails?.totalAmount ?? 0;
+  //   const customerAddress = parseCustomerAddress(
+  //     order.orderDetails?.customerAddress ?? null,
+  //   );
+  //   const customerCoordinate =
+  //     customerAddress.latitude != null && customerAddress.longitude != null
+  //       ? {
+  //           latitude: customerAddress.latitude,
+  //           longitude: customerAddress.longitude,
+  //         }
+  //       : null;
+  //   const customerDistance = formatDistance(customerCoordinate);
+
+  //   const shopAddressText = [
+  //     order.shopDetails?.address?.address,
+  //     order.shopDetails?.address?.city,
+  //     order.shopDetails?.address?.state,
+  //   ]
+  //     .filter(Boolean)
+  //     .join(', ');
+  //   const shopCoordinate =
+  //     order.shopDetails?.address?.latitude != null &&
+  //     order.shopDetails?.address?.longitude != null
+  //       ? {
+  //           latitude: order.shopDetails.address.latitude,
+  //           longitude: order.shopDetails.address.longitude,
+  //         }
+  //       : order.shopDetails?.coordinates?.latitude != null &&
+  //         order.shopDetails?.coordinates?.longitude != null
+  //       ? {
+  //           latitude: order.shopDetails.coordinates.latitude,
+  //           longitude: order.shopDetails.coordinates.longitude,
+  //         }
+  //       : order.shopDetails?.latitude != null &&
+  //         order.shopDetails?.longitude != null
+  //       ? {
+  //           latitude: order.shopDetails.latitude,
+  //           longitude: order.shopDetails.longitude,
+  //         }
+  //       : null;
+  //   const shopDistance = formatDistance(shopCoordinate);
+  //   const shopImage =
+  //     order.shopDetails?.banner || order.shopDetails?.logo || null;
+
+  //   const orderDateTime = formatOrderDateTime(
+  //     order.orderDetails?.creationTime ?? order.createdAt,
+  //   );
+
+  //   const liveAmountExcludingDeliveryFee =
+  //     order.orderDetails?.amountExcludingDeliveryFee ?? 0;
+  //   const liveServiceType: ServiceType = order.shopDetails?.category
+  //     ?.toLowerCase()
+  //     .includes('grocery')
+  //     ? 'GROCERY'
+  //     : 'FOOD';
+  //   const livePricing = getPricingValues(liveServiceType);
+  //   const liveCommission =
+  //     livePricing.commissionRate * liveAmountExcludingDeliveryFee;
+  //   const liveTaxableAmount =
+  //     liveCommission + livePricing.deliveryFee + livePricing.platformFee;
+  //   const liveTaxes = Math.round(livePricing.gstRate * liveTaxableAmount);
+  //   const liveComputedTotal =
+  //     liveAmountExcludingDeliveryFee +
+  //     livePricing.deliveryFee +
+  //     livePricing.platformFee +
+  //     livePricing.packagingCharges +
+  //     liveTaxes;
+
+  //   return (
+  //     <View
+  //       key={order.id || order.orderId}
+  //       style={[styles.liveCard, { marginBottom: 12 }]}
+  //     >
+  //       <View style={styles.livePulseRow}>
+  //         <View style={styles.liveDot} />
+  //         <Text style={styles.liveLabel}>Live Order</Text>
+  //         <View style={styles.liveTimeBadge}>
+  //           <Text style={styles.liveTimeText}>
+  //             {orderDateTime.time || orderDateTime.date}
+  //           </Text>
+  //         </View>
+  //       </View>
+  //       <View style={styles.liveSubRow}>
+  //         <Text style={styles.liveOrderId}>#{order.orderId || order.id}</Text>
+  //         <View style={styles.liveStatePill}>
+  //           <Text style={styles.liveStatePillText}>
+  //             {formatStatusLabel(
+  //               order.orderDetails?.state?.toUpperCase() ?? 'UNKNOWN',
+  //             )}
+  //           </Text>
+  //         </View>
+  //       </View>
+
+  //       {/* Pickup */}
+  //       <View style={styles.liveLocationRow}>
+  //         {shopImage ? (
+  //           <Image source={{ uri: shopImage }} style={styles.liveLocImage} />
+  //         ) : (
+  //           <View style={styles.liveLocIconWrap}>
+  //             <MapPin size={16} color="#0E6DFD" />
+  //           </View>
+  //         )}
+  //         <View style={styles.liveLocInfo}>
+  //           <Text style={styles.liveLocName}>
+  //             {order.shopDetails?.name || `Shop ${shopId ?? 'N/A'}`}
+  //           </Text>
+  //           <Text style={styles.liveLocAddress} numberOfLines={2}>
+  //             {shopAddressText || 'Address unavailable'}
+  //           </Text>
+  //           {shopDistance ? (
+  //             <Text style={styles.liveLocDistance}>{shopDistance}</Text>
+  //           ) : null}
+  //         </View>
+  //         <TouchableOpacity
+  //           onPress={() =>
+  //             openDirections({
+  //               coordinate: shopCoordinate,
+  //               fallbackQuery: shopAddressText || order.shopDetails?.name || '',
+  //             })
+  //           }
+  //           style={styles.liveNavButton}
+  //           activeOpacity={0.8}
+  //         >
+  //           <Navigation size={14} color="#FFFFFF" />
+  //         </TouchableOpacity>
+  //       </View>
+
+  //       <View style={styles.liveConnector} />
+
+  //       {/* Drop */}
+  //       <View style={styles.liveLocationRow}>
+  //         <View
+  //           style={[styles.liveLocIconWrap, { backgroundColor: '#FEF2F2' }]}
+  //         >
+  //           <MapPin size={16} color="#EF4444" />
+  //         </View>
+  //         <View style={styles.liveLocInfo}>
+  //           <Text style={styles.liveLocName}>
+  //             {order.orderDetails?.customerName || 'Customer'}
+  //           </Text>
+  //           <Text style={styles.liveLocAddress} numberOfLines={2}>
+  //             {customerAddress.text}
+  //           </Text>
+  //           {customerDistance ? (
+  //             <Text style={styles.liveLocDistance}>{customerDistance}</Text>
+  //           ) : null}
+  //         </View>
+  //         <TouchableOpacity
+  //           onPress={() =>
+  //             openDirections({
+  //               coordinate: customerCoordinate,
+  //               fallbackQuery: customerAddress.text,
+  //             })
+  //           }
+  //           style={[styles.liveNavButton, { backgroundColor: '#EF4444' }]}
+  //           activeOpacity={0.8}
+  //         >
+  //           <Navigation size={14} color="#FFFFFF" />
+  //         </TouchableOpacity>
+  //       </View>
+
+  //       {order.orderDetails?.customerMobile && (
+  //         <TouchableOpacity
+  //           style={styles.liveCallRow}
+  //           onPress={() =>
+  //             Linking.openURL(
+  //               `tel:${String(order.orderDetails!.customerMobile).slice(-10)}`,
+  //             )
+  //           }
+  //           activeOpacity={0.7}
+  //         >
+  //           <View style={styles.liveCallIconWrap}>
+  //             <Phone size={14} color="#FFFFFF" />
+  //           </View>
+  //           <Text style={styles.liveCallText}>
+  //             {String(order.orderDetails.customerMobile).slice(-10)}
+  //           </Text>
+  //           <Text style={styles.liveCallAction}>Call Customer</Text>
+  //         </TouchableOpacity>
+  //       )}
+
+  //       {(order.orderDetails?.orderItem?.length ?? 0) > 0 && (
+  //         <>
+  //           <TouchableOpacity
+  //             style={styles.itemsToggleRow}
+  //             onPress={() => toggleItemsExpanded(liveCardId)}
+  //             activeOpacity={0.7}
+  //           >
+  //             <Text style={styles.itemsToggleText}>
+  //               {liveItemCount} item{liveItemCount > 1 ? 's' : ''}
+  //             </Text>
+  //             {expandedItemIds.has(liveCardId) ? (
+  //               <ChevronUp size={14} color="#0E6DFD" />
+  //             ) : (
+  //               <ChevronDown size={14} color="#0E6DFD" />
+  //             )}
+  //           </TouchableOpacity>
+  //           {expandedItemIds.has(liveCardId) &&
+  //             order.orderDetails!.orderItem.map(item => (
+  //               <View key={item.id} style={styles.itemRow}>
+  //                 <Text style={styles.itemName} numberOfLines={1}>
+  //                   {item.name}
+  //                 </Text>
+  //                 <Text style={styles.itemCount}>x{item.itemCount}</Text>
+  //               </View>
+  //             ))}
+  //         </>
+  //       )}
+
+  //       <BillSummaryCard
+  //         totalAmount={liveComputedTotal}
+  //         subtotal={liveAmountExcludingDeliveryFee}
+  //         deliveryFee={livePricing.deliveryFee}
+  //         deliveryFeeOriginal={livePricing.deliveryFeeOriginal}
+  //         platformFee={livePricing.platformFee}
+  //         platformFeeOriginal={livePricing.platformFeeOriginal}
+  //         packagingCharges={livePricing.packagingCharges}
+  //         packagingChargesOriginal={livePricing.packagingChargesOriginal}
+  //         taxes={liveTaxes}
+  //         commission={liveCommission}
+  //         taxableAmount={liveTaxableAmount}
+  //         commissionRate={livePricing.commissionRate}
+  //         gstRate={livePricing.gstRate}
+  //       />
+
+  //       {(() => {
+  //         const stage = getDeliveryStageForOrder(order);
+  //         if (!stage) return null;
+  //         const isLoading = stageLoadingOrderId === order.id;
+
+  //         return (
+  //           <TouchableOpacity
+  //             style={styles.stageActionButton}
+  //             onPress={() => handleStageAction(order)}
+  //             disabled={isLoading}
+  //             activeOpacity={0.85}
+  //           >
+  //             {isLoading ? (
+  //               <ActivityIndicator size="small" color="#FFFFFF" />
+  //             ) : (
+  //               <Text style={styles.stageActionButtonText}>
+  //                 {stage.buttonLabel}
+  //               </Text>
+  //             )}
+  //           </TouchableOpacity>
+  //         );
+  //       })()}
+
+  //       {!!order.orderDetails?.orderLink && (
+  //         <TouchableOpacity
+  //           style={styles.liveViewDetailsButton}
+  //           onPress={() =>
+  //             navigation.navigate('OrderWebView', {
+  //               url: order.orderDetails!.orderLink!,
+  //               title: `Order #${order.orderId || order.id}`,
+  //             })
+  //           }
+  //           activeOpacity={0.85}
+  //         >
+  //           <Text style={styles.liveViewDetailsButtonText}>
+  //             View Order Details
+  //           </Text>
+  //         </TouchableOpacity>
+  //       )}
+  //     </View>
+  //   );
+  // };
+
   const renderLiveOrderCard = (order: DeliveryPartnerOrder) => {
     const liveCardId = order.id || order.orderId;
-    const orderStatus = order.orderStatus?.toUpperCase() ?? '';
-    const currentStepIdx = getTimelineIndex(orderStatus);
-    const shopId = order.orderDetails?.shopId ?? order.shopId;
-    const liveItemCount = order.orderDetails?.totalItemCount ?? 0;
-    const paymentMethod =
-      order.orderDetails?.paymentMethod ?? order.paymentMethod ?? 'N/A';
-    const totalAmount = order.orderDetails?.totalAmount ?? 0;
-    const customerAddress = parseCustomerAddress(
-      order.orderDetails?.customerAddress ?? null,
-    );
-    const customerCoordinate =
-      customerAddress.latitude != null && customerAddress.longitude != null
-        ? {
-            latitude: customerAddress.latitude,
-            longitude: customerAddress.longitude,
-          }
-        : null;
-    const customerDistance = formatDistance(customerCoordinate);
-
-    const shopAddressText = [
-      order.shopDetails?.address?.address,
-      order.shopDetails?.address?.city,
-      order.shopDetails?.address?.state,
-    ]
-      .filter(Boolean)
-      .join(', ');
-    const shopCoordinate =
-      order.shopDetails?.address?.latitude != null &&
-      order.shopDetails?.address?.longitude != null
-        ? {
-            latitude: order.shopDetails.address.latitude,
-            longitude: order.shopDetails.address.longitude,
-          }
-        : order.shopDetails?.coordinates?.latitude != null &&
-          order.shopDetails?.coordinates?.longitude != null
-        ? {
-            latitude: order.shopDetails.coordinates.latitude,
-            longitude: order.shopDetails.coordinates.longitude,
-          }
-        : order.shopDetails?.latitude != null &&
-          order.shopDetails?.longitude != null
-        ? {
-            latitude: order.shopDetails.latitude,
-            longitude: order.shopDetails.longitude,
-          }
-        : null;
-    const shopDistance = formatDistance(shopCoordinate);
-    const shopImage =
-      order.shopDetails?.banner || order.shopDetails?.logo || null;
-
     const orderDateTime = formatOrderDateTime(
       order.orderDetails?.creationTime ?? order.createdAt,
     );
-
     const liveAmountExcludingDeliveryFee =
       order.orderDetails?.amountExcludingDeliveryFee ?? 0;
+    const orderStatus = order.orderStatus?.toUpperCase() ?? '';
     const liveServiceType: ServiceType = order.shopDetails?.category
       ?.toLowerCase()
       .includes('grocery')
@@ -988,10 +1220,13 @@ const HomeScreen: React.FC = () => {
       liveTaxes;
 
     return (
-      <View
-        key={order.id || order.orderId}
-        style={[styles.liveCard, { marginBottom: 12 }]}
+      <TouchableOpacity
+        key={liveCardId}
+        style={styles.liveCard}
+        activeOpacity={0.85}
+        onPress={() => navigation.navigate('OrderDelivery', { order })}
       >
+        {/* Pulse row */}
         <View style={styles.livePulseRow}>
           <View style={styles.liveDot} />
           <Text style={styles.liveLabel}>Live Order</Text>
@@ -1001,6 +1236,8 @@ const HomeScreen: React.FC = () => {
             </Text>
           </View>
         </View>
+
+        {/* Order ID + status */}
         <View style={styles.liveSubRow}>
           <Text style={styles.liveOrderId}>#{order.orderId || order.id}</Text>
           <View style={styles.liveStatePill}>
@@ -1012,178 +1249,104 @@ const HomeScreen: React.FC = () => {
           </View>
         </View>
 
-        {/* Pickup */}
-        <View style={styles.liveLocationRow}>
-          {shopImage ? (
-            <Image source={{ uri: shopImage }} style={styles.liveLocImage} />
-          ) : (
-            <View style={styles.liveLocIconWrap}>
-              <MapPin size={16} color="#0E6DFD" />
-            </View>
+        {/* Customer + amount */}
+        <View
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginTop: 6,
+          }}
+        >
+          <Text style={styles.liveLocName}>
+            {order.orderDetails?.customerName || 'Customer'}
+          </Text>
+          <Text style={styles.liveEarningsInline}>
+            {formatCurrency(liveComputedTotal)}
+          </Text>
+        </View>
+
+        {/* Shop name */}
+        <Text style={[styles.liveLocAddress, { marginTop: 2 }]}>
+          {order.shopDetails?.name || 'Shop'}
+        </Text>
+
+        {/* Mini progress strip */}
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            marginTop: 10,
+            marginBottom: 4,
+          }}
+        >
+          {['At Store', 'Picked Up', 'En Route', 'Delivered'].map(
+            (label, i) => {
+              const stageMap: Record<string, number> = {
+                ACCEPTED: 0,
+                PARTNER_ASSIGNED: 0,
+                ARRIVED_AT_STORE: 1,
+                ORDER_PICKED_UP: 2,
+                REACHED_LOCATION: 3,
+                DELIVERED: 4,
+              };
+              const currentIdx = stageMap[orderStatus] ?? 0;
+              const done = i < currentIdx;
+              const active = i === currentIdx;
+              return (
+                <React.Fragment key={label}>
+                  <View style={{ alignItems: 'center' }}>
+                    <View
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: 4,
+                        backgroundColor: done
+                          ? '#16A34A'
+                          : active
+                          ? '#0E6DFD'
+                          : '#E2E8F0',
+                      }}
+                    />
+                    <Text
+                      style={{
+                        fontSize: 8,
+                        color: active ? '#0E6DFD' : '#94A3B8',
+                        marginTop: 2,
+                        fontFamily: FONT_FAMILY.bricolageMedium,
+                      }}
+                    >
+                      {label}
+                    </Text>
+                  </View>
+                  {i < 3 && (
+                    <View
+                      style={{
+                        flex: 1,
+                        height: 2,
+                        backgroundColor: done ? '#16A34A' : '#E2E8F0',
+                        marginBottom: 10,
+                      }}
+                    />
+                  )}
+                </React.Fragment>
+              );
+            },
           )}
-          <View style={styles.liveLocInfo}>
-            <Text style={styles.liveLocName}>
-              {order.shopDetails?.name || `Shop ${shopId ?? 'N/A'}`}
-            </Text>
-            <Text style={styles.liveLocAddress} numberOfLines={2}>
-              {shopAddressText || 'Address unavailable'}
-            </Text>
-            {shopDistance ? (
-              <Text style={styles.liveLocDistance}>{shopDistance}</Text>
-            ) : null}
-          </View>
-          <TouchableOpacity
-            onPress={() =>
-              openDirections({
-                coordinate: shopCoordinate,
-                fallbackQuery: shopAddressText || order.shopDetails?.name || '',
-              })
-            }
-            style={styles.liveNavButton}
-            activeOpacity={0.8}
-          >
-            <Navigation size={14} color="#FFFFFF" />
-          </TouchableOpacity>
         </View>
 
-        <View style={styles.liveConnector} />
-
-        {/* Drop */}
-        <View style={styles.liveLocationRow}>
-          <View
-            style={[styles.liveLocIconWrap, { backgroundColor: '#FEF2F2' }]}
-          >
-            <MapPin size={16} color="#EF4444" />
-          </View>
-          <View style={styles.liveLocInfo}>
-            <Text style={styles.liveLocName}>
-              {order.orderDetails?.customerName || 'Customer'}
-            </Text>
-            <Text style={styles.liveLocAddress} numberOfLines={2}>
-              {customerAddress.text}
-            </Text>
-            {customerDistance ? (
-              <Text style={styles.liveLocDistance}>{customerDistance}</Text>
-            ) : null}
-          </View>
-          <TouchableOpacity
-            onPress={() =>
-              openDirections({
-                coordinate: customerCoordinate,
-                fallbackQuery: customerAddress.text,
-              })
-            }
-            style={[styles.liveNavButton, { backgroundColor: '#EF4444' }]}
-            activeOpacity={0.8}
-          >
-            <Navigation size={14} color="#FFFFFF" />
-          </TouchableOpacity>
-        </View>
-
-        {order.orderDetails?.customerMobile && (
-          <TouchableOpacity
-            style={styles.liveCallRow}
-            onPress={() =>
-              Linking.openURL(
-                `tel:${String(order.orderDetails!.customerMobile).slice(-10)}`,
-              )
-            }
-            activeOpacity={0.7}
-          >
-            <View style={styles.liveCallIconWrap}>
-              <Phone size={14} color="#FFFFFF" />
-            </View>
-            <Text style={styles.liveCallText}>
-              {String(order.orderDetails.customerMobile).slice(-10)}
-            </Text>
-            <Text style={styles.liveCallAction}>Call Customer</Text>
-          </TouchableOpacity>
-        )}
-
-        {(order.orderDetails?.orderItem?.length ?? 0) > 0 && (
-          <>
-            <TouchableOpacity
-              style={styles.itemsToggleRow}
-              onPress={() => toggleItemsExpanded(liveCardId)}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.itemsToggleText}>
-                {liveItemCount} item{liveItemCount > 1 ? 's' : ''}
-              </Text>
-              {expandedItemIds.has(liveCardId) ? (
-                <ChevronUp size={14} color="#0E6DFD" />
-              ) : (
-                <ChevronDown size={14} color="#0E6DFD" />
-              )}
-            </TouchableOpacity>
-            {expandedItemIds.has(liveCardId) &&
-              order.orderDetails!.orderItem.map(item => (
-                <View key={item.id} style={styles.itemRow}>
-                  <Text style={styles.itemName} numberOfLines={1}>
-                    {item.name}
-                  </Text>
-                  <Text style={styles.itemCount}>x{item.itemCount}</Text>
-                </View>
-              ))}
-          </>
-        )}
-
-        <BillSummaryCard
-          totalAmount={liveComputedTotal}
-          subtotal={liveAmountExcludingDeliveryFee}
-          deliveryFee={livePricing.deliveryFee}
-          deliveryFeeOriginal={livePricing.deliveryFeeOriginal}
-          platformFee={livePricing.platformFee}
-          platformFeeOriginal={livePricing.platformFeeOriginal}
-          packagingCharges={livePricing.packagingCharges}
-          packagingChargesOriginal={livePricing.packagingChargesOriginal}
-          taxes={liveTaxes}
-          commission={liveCommission}
-          taxableAmount={liveTaxableAmount}
-          commissionRate={livePricing.commissionRate}
-          gstRate={livePricing.gstRate}
-        />
-
-        {(() => {
-          const stage = getDeliveryStageForOrder(order);
-          if (!stage) return null;
-          const isLoading = stageLoadingOrderId === order.id;
-
-          return (
-            <TouchableOpacity
-              style={styles.stageActionButton}
-              onPress={() => handleStageAction(order)}
-              disabled={isLoading}
-              activeOpacity={0.85}
-            >
-              {isLoading ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <Text style={styles.stageActionButtonText}>
-                  {stage.buttonLabel}
-                </Text>
-              )}
-            </TouchableOpacity>
-          );
-        })()}
-
-        {!!order.orderDetails?.orderLink && (
-          <TouchableOpacity
-            style={styles.liveViewDetailsButton}
-            onPress={() =>
-              navigation.navigate('OrderWebView', {
-                url: order.orderDetails!.orderLink!,
-                title: `Order #${order.orderId || order.id}`,
-              })
-            }
-            activeOpacity={0.85}
-          >
-            <Text style={styles.liveViewDetailsButtonText}>
-              View Order Details
-            </Text>
-          </TouchableOpacity>
-        )}
-      </View>
+        {/* CTA */}
+        <TouchableOpacity
+          style={[
+            styles.stageActionButton,
+            { marginTop: 12, backgroundColor: '#0E6DFD' },
+          ]}
+          activeOpacity={0.85}
+          onPress={() => navigation.navigate('OrderDelivery', { order })}
+        >
+          <Text style={styles.stageActionButtonText}>Manage Delivery</Text>
+        </TouchableOpacity>
+      </TouchableOpacity>
     );
   };
 
