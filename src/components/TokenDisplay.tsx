@@ -6,9 +6,9 @@ import { TokenStorage } from '../utils/storage';
 const TokenDisplay: React.FC = () => {
   const { token, user } = useAuthStore();
 
-  const handleShowStorageInfo = () => {
-    const storedToken = TokenStorage.getToken();
-    const hasToken = TokenStorage.hasToken();
+  const handleShowStorageInfo = async () => {
+    const storedToken = await TokenStorage.getToken();
+    const hasToken = await TokenStorage.hasToken();
 
     Alert.alert(
       'Storage Information',
@@ -19,7 +19,7 @@ const TokenDisplay: React.FC = () => {
     );
   };
 
-  const handleClearStorage = () => {
+  const handleClearStorage = async () => {
     Alert.alert(
       'Clear Storage',
       'This will clear the stored authentication token. Are you sure?',
@@ -28,8 +28,8 @@ const TokenDisplay: React.FC = () => {
         {
           text: 'Clear',
           style: 'destructive',
-          onPress: () => {
-            TokenStorage.clearToken();
+          onPress: async () => {
+            await TokenStorage.clearToken();
             Alert.alert('Success', 'Token cleared successfully');
           },
         },

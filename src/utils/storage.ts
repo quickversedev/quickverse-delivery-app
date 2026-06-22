@@ -1,36 +1,4 @@
-import { MMKV } from 'react-native-mmkv';
-
-// Lazily create a single MMKV instance; provide safe in-memory fallback
-let mmkv: MMKV | null = null;
-let didAttemptStorageInit = false;
-let inMemoryToken: string | null = null;
-let inMemoryPartnerId: string | null = null;
-
-export const initializeStorage = (): void => {
-  if (didAttemptStorageInit) {
-    return;
-  }
-
-  didAttemptStorageInit = true;
-  if (!mmkv) {
-    try {
-      mmkv = new MMKV();
-    } catch (error) {
-      console.warn(
-        'MMKV storage failed to initialize. Falling back to in-memory storage.',
-        error,
-      );
-      mmkv = null;
-    }
-  }
-};
-
-const getStorage = (): MMKV | null => {
-  if (!mmkv) {
-    initializeStorage();
-  }
-  return mmkv;
-};
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const AUTH_TOKEN_KEY = '@AuthToken';
 const PARTNER_ACTIVE_KEY = '@PartnerActive';
@@ -39,141 +7,146 @@ const PHONE_NUMBER_KEY = '@PhoneNumber';
 const IS_LOGGED_IN_KEY = '@IsLoggedIn';
 
 export const TokenStorage = {
-  saveToken(token: string): void {
-    const storage = getStorage();
-    if (storage) {
-      storage.set(AUTH_TOKEN_KEY, token);
-    } else {
-      inMemoryToken = token;
+  async saveToken(token: string): Promise<void> {
+    try {
+      await AsyncStorage.setItem(AUTH_TOKEN_KEY, token);
+    } catch (error) {
+      console.error('Error saving token:', error);
     }
   },
 
-  getToken(): string | null {
-    const storage = getStorage();
-    if (storage) {
-      return storage.getString(AUTH_TOKEN_KEY) ?? null;
+  async getToken(): Promise<string | null> {
+    try {
+      return await AsyncStorage.getItem(AUTH_TOKEN_KEY);
+    } catch (error) {
+      console.error('Error getting token:', error);
+      return null;
     }
-    return inMemoryToken;
   },
 
-  clearToken(): void {
-    const storage = getStorage();
-    if (storage) {
-      storage.delete(AUTH_TOKEN_KEY);
+  async clearToken(): Promise<void> {
+    try {
+      await AsyncStorage.removeItem(AUTH_TOKEN_KEY);
+    } catch (error) {
+      console.error('Error clearing token:', error);
     }
-    inMemoryToken = null;
   },
 
-  hasToken(): boolean {
-    const storage = getStorage();
-    if (storage) {
-      return storage.getString(AUTH_TOKEN_KEY) != null;
-    }
-    return inMemoryToken != null;
+  async hasToken(): Promise<boolean> {
+    const token = await this.getToken();
+    return token !== null;
   },
 
-  savePartnerId(partnerId: string | null): void {
-    const storage = getStorage();
-    if (!partnerId) {
-      if (storage) {
-        storage.delete(PARTNER_ID_KEY);
+  async savePartnerId(partnerId: string | null): Promise<void> {
+    try {
+      if (!partnerId) {
+        await AsyncStorage.removeItem(PARTNER_ID_KEY);
+      } else {
+        await AsyncStorage.setItem(PARTNER_ID_KEY, partnerId);
       }
-      inMemoryPartnerId = null;
-      return;
-    }
-
-    if (storage) {
-      storage.set(PARTNER_ID_KEY, partnerId);
-    } else {
-      inMemoryPartnerId = partnerId;
+    } catch (error) {
+      console.error('Error saving partner ID:', error);
     }
   },
 
-  getPartnerId(): string | null {
-    const storage = getStorage();
-    if (storage) {
-      return storage.getString(PARTNER_ID_KEY) ?? null;
+  async getPartnerId(): Promise<string | null> {
+    try {
+      return await AsyncStorage.getItem(PARTNER_ID_KEY);
+    } catch (error) {
+      console.error('Error getting partner ID:', error);
+      return null;
     }
-    return inMemoryPartnerId;
   },
 
-  clearPartnerId(): void {
-    const storage = getStorage();
-    if (storage) {
-      storage.delete(PARTNER_ID_KEY);
+  async clearPartnerId(): Promise<void> {
+    try {
+      await AsyncStorage.removeItem(PARTNER_ID_KEY);
+    } catch (error) {
+      console.error('Error clearing partner ID:', error);
     }
-    inMemoryPartnerId = null;
   },
 
-  savePhoneNumber(phoneNumber: string | null): void {
-    const storage = getStorage();
-    if (!phoneNumber) {
-      if (storage) {
-        storage.delete(PHONE_NUMBER_KEY);
+  async savePhoneNumber(phoneNumber: string | null): Promise<void> {
+    try {
+      if (!phoneNumber) {
+        await AsyncStorage.removeItem(PHONE_NUMBER_KEY);
+      } else {
+        await AsyncStorage.setItem(PHONE_NUMBER_KEY, phoneNumber);
       }
-      return;
-    }
-    if (storage) {
-      storage.set(PHONE_NUMBER_KEY, phoneNumber);
+    } catch (error) {
+      console.error('Error saving phone number:', error);
     }
   },
 
-  getPhoneNumber(): string | null {
-    const storage = getStorage();
-    if (storage) {
-      return storage.getString(PHONE_NUMBER_KEY) ?? null;
-    }
-    return null;
-  },
-
-  clearPhoneNumber(): void {
-    const storage = getStorage();
-    if (storage) {
-      storage.delete(PHONE_NUMBER_KEY);
+  async getPhoneNumber(): Promise<string | null> {
+    try {
+      return await AsyncStorage.getItem(PHONE_NUMBER_KEY);
+    } catch (error) {
+      console.error('Error getting phone number:', error);
+      return null;
     }
   },
 
-  setLoggedIn(value: boolean): void {
-    const storage = getStorage();
-    if (storage) {
-      storage.set(IS_LOGGED_IN_KEY, value);
+  async clearPhoneNumber(): Promise<void> {
+    try {
+      await AsyncStorage.removeItem(PHONE_NUMBER_KEY);
+    } catch (error) {
+      console.error('Error clearing phone number:', error);
     }
   },
 
-  isLoggedIn(): boolean {
-    const storage = getStorage();
-    if (storage) {
-      return storage.getBoolean(IS_LOGGED_IN_KEY) ?? false;
+  async setLoggedIn(value: boolean): Promise<void> {
+    try {
+      // AsyncStorage only accepts strings, so booleans must be serialized
+      await AsyncStorage.setItem(IS_LOGGED_IN_KEY, JSON.stringify(value));
+    } catch (error) {
+      console.error('Error setting logged in status:', error);
     }
-    return false;
   },
 
-  clearLoggedIn(): void {
-    const storage = getStorage();
-    if (storage) {
-      storage.delete(IS_LOGGED_IN_KEY);
+  async isLoggedIn(): Promise<boolean> {
+    try {
+      const value = await AsyncStorage.getItem(IS_LOGGED_IN_KEY);
+      return value ? JSON.parse(value) : false;
+    } catch (error) {
+      console.error('Error checking logged in status:', error);
+      return false;
+    }
+  },
+
+  async clearLoggedIn(): Promise<void> {
+    try {
+      await AsyncStorage.removeItem(IS_LOGGED_IN_KEY);
+    } catch (error) {
+      console.error('Error clearing logged in status:', error);
     }
   },
 };
 
 export const PartnerStatusStorage = {
-  setActive(active: boolean): void {
-    const storage = getStorage();
-    if (storage) {
-      storage.set(PARTNER_ACTIVE_KEY, active);
+  async setActive(active: boolean): Promise<void> {
+    try {
+      await AsyncStorage.setItem(PARTNER_ACTIVE_KEY, JSON.stringify(active));
+    } catch (error) {
+      console.error('Error setting partner active status:', error);
     }
   },
-  isActive(): boolean {
-    const storage = getStorage();
-    if (storage) {
-      return storage.getBoolean(PARTNER_ACTIVE_KEY) ?? false;
+
+  async isActive(): Promise<boolean> {
+    try {
+      const value = await AsyncStorage.getItem(PARTNER_ACTIVE_KEY);
+      return value ? JSON.parse(value) : false;
+    } catch (error) {
+      console.error('Error checking partner active status:', error);
+      return false;
     }
-    return false;
   },
-  clear(): void {
-    const storage = getStorage();
-    if (storage) {
-      storage.delete(PARTNER_ACTIVE_KEY);
+
+  async clear(): Promise<void> {
+    try {
+      await AsyncStorage.removeItem(PARTNER_ACTIVE_KEY);
+    } catch (error) {
+      console.error('Error clearing partner active status:', error);
     }
   },
 };

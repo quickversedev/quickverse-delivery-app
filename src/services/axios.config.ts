@@ -132,8 +132,9 @@ const logApiError = (error: any) => {
 };
 
 // Attach Authorization header if token exists
-axiosInstance.interceptors.request.use((config: any) => {
-  const token = TokenStorage.getToken();
+axiosInstance.interceptors.request.use(async (config: any) => {
+  const token = await TokenStorage.getToken();
+  console.log(token);
   if (token) {
     const headers = (config.headers ?? {}) as any;
     headers.Authorization = `Bearer ${token}`;
@@ -203,6 +204,7 @@ const handleAxiosError = (error: any): ApiError => {
 
     if (errorCode === '1047' || errorCode === '1042') {
       showToast('invalid session');
+      console.log(responseData);
       sessionExpiredCallback?.();
     }
 

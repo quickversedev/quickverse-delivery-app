@@ -27,7 +27,9 @@
             <category android:name="android.intent.category.LAUNCHER" />
         </intent-filter>
       </activity>
-
+    <meta-data
+  android:name="com.google.android.geo.API_KEY"
+  android:value="AIzaSyBu0CGCx2_HfAJVWbsuv4vgwD2V8qiGckE"/>
     <!-- Firebase Messaging Service -->
     <service
       android:name="io.invertase.firebase.messaging.ReactNativeFirebaseMessagingService"

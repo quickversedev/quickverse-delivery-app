@@ -82,9 +82,16 @@ const clearPersistedAuthState = async () => {
 
 export const rehydrateAuthStore = async () => {
   try {
+    // Helpful debugging lines kept clean
+    const allKeys = await AsyncStorage.getAllKeys();
+    console.log('Available Storage Keys:', allKeys);
+
     const saved = await safeGetItem(STORAGE_KEY);
+    console.log('Saved Auth State Payload:', saved);
+
     if (saved) {
       const parsed: PersistedAuthState = JSON.parse(saved);
+      console.log(parsed);
 
       useAuthStore.setState({
         ...parsed,
@@ -93,36 +100,52 @@ export const rehydrateAuthStore = async () => {
         verificationId: null,
       });
 
-      if (parsed.token) {
-        TokenStorage.saveToken(parsed.token);
-      }
-      if (parsed.authData.partnerId) {
-        TokenStorage.savePartnerId(parsed.authData.partnerId);
-      }
-      if (parsed.authData.phoneNumber) {
-        TokenStorage.savePhoneNumber(parsed.authData.phoneNumber);
-      }
-      if (parsed.isLoggedIn) {
-        TokenStorage.setLoggedIn(true);
-      }
+      // Synchronize standalone utility keys alongside main storage state
+      await Promise.all([
+        parsed.token ? TokenStorage.saveToken(parsed.token) : Promise.resolve(),
+        parsed.authData.partnerId
+          ? TokenStorage.savePartnerId(parsed.authData.partnerId)
+          : Promise.resolve(),
+        parsed.authData.phoneNumber
+          ? TokenStorage.savePhoneNumber(parsed.authData.phoneNumber)
+          : Promise.resolve(),
+        TokenStorage.setLoggedIn(parsed.isLoggedIn),
+      ]);
+
+      console.log(
+        'Auth state rehydrated successfully:',
+        parsed.authData.partnerId,
+      );
 
       if (parsed.authData.partnerId) {
-        const profile = await deliveryPartnerService.getDeliveryPartnerById(
-          parsed.authData.partnerId,
-        );
-        useAuthStore.setState({ partnerProfile: profile });
-        await persistAuthState({ ...parsed, partnerProfile: profile });
+        try {
+          console.log('Getting profile : ', parsed.authData.partnerId);
+          const profile = await deliveryPartnerService.getDeliveryPartnerById(
+            parsed.authData.partnerId,
+          );
+          console.log('Fetched Partner Profile during rehydration:', profile);
+          useAuthStore.setState({ partnerProfile: profile });
+          await persistAuthState({ ...parsed, partnerProfile: profile });
+        } catch (profileError) {
+          console.warn(
+            'Profile fetch failed during rehydration:',
+            profileError,
+          );
+        }
       }
       return;
     }
 
-    const token = TokenStorage.getToken();
-    const partnerId = TokenStorage.getPartnerId();
-    const phoneNumber = TokenStorage.getPhoneNumber();
-    const loggedIn = TokenStorage.isLoggedIn();
+    // Fallback path: Handle instances where only standalone keys exist (legacy data migrations)
+    const [token, partnerId, phoneNumber, loggedIn] = await Promise.all([
+      TokenStorage.getToken(),
+      TokenStorage.getPartnerId(),
+      TokenStorage.getPhoneNumber(),
+      TokenStorage.isLoggedIn(),
+    ]);
 
     if (token || partnerId || phoneNumber || loggedIn) {
-      useAuthStore.setState({
+      const fallbackState: PersistedAuthState = {
         user: {
           phoneNumber: phoneNumber,
           isVerified: true,
@@ -135,17 +158,18 @@ export const rehydrateAuthStore = async () => {
           partnerId,
         },
         token,
+        partnerProfile: null,
+      };
+
+      useAuthStore.setState({
+        ...fallbackState,
         isBootstrapping: false,
         isLoading: false,
         verificationId: null,
       });
 
-      if (token) {
-        TokenStorage.saveToken(token);
-      }
-      if (partnerId) {
-        TokenStorage.savePartnerId(partnerId);
-      }
+      // Crucial Fix: Ensure the unified fallback state gets saved directly to STORAGE_KEY
+      await persistAuthState(fallbackState);
     }
   } catch (error) {
     console.warn('Failed to rehydrate auth store:', error);
@@ -226,12 +250,18 @@ export const useAuthStore = create<AuthStoreState>()(() => ({
         verificationId: null,
       });
 
-      TokenStorage.saveToken(session.token);
-      TokenStorage.savePartnerId(session.deliveryPartnerId);
-      TokenStorage.savePhoneNumber(session.phoneNumber);
-      TokenStorage.setLoggedIn(true);
+      // Parallelize async storage ops to maximize speed performance
+      await Promise.all([
+        TokenStorage.saveToken(session.token),
+        TokenStorage.savePartnerId(session.deliveryPartnerId),
+        TokenStorage.savePhoneNumber(session.phoneNumber),
+        TokenStorage.setLoggedIn(true),
+      ]);
 
-      deviceRegistryService.updateDeviceRegistrySafe(session.phoneNumber, session.token);
+      deviceRegistryService.updateDeviceRegistrySafe(
+        session.phoneNumber,
+        session.token,
+      );
 
       if (session.deliveryPartnerId) {
         const profile = await deliveryPartnerService.getDeliveryPartnerById(
@@ -252,11 +282,14 @@ export const useAuthStore = create<AuthStoreState>()(() => ({
     try {
       await authService.signOut().catch(() => undefined);
     } finally {
-      TokenStorage.clearToken();
-      TokenStorage.clearPartnerId();
-      TokenStorage.clearPhoneNumber();
-      TokenStorage.clearLoggedIn();
-      await clearPersistedAuthState();
+      // Clear data out completely across all namespaces concurrently
+      await Promise.all([
+        TokenStorage.clearToken(),
+        TokenStorage.clearPartnerId(),
+        TokenStorage.clearPhoneNumber(),
+        TokenStorage.clearLoggedIn(),
+        clearPersistedAuthState(),
+      ]);
 
       useAuthStore.setState({
         user: null,
@@ -287,6 +320,16 @@ export const useAuthStore = create<AuthStoreState>()(() => ({
         partnerId,
       );
       useAuthStore.setState({ partnerProfile: profile });
+
+      // Keep storage in sync with new profile data updates
+      const currentStoreState = useAuthStore.getState();
+      await persistAuthState({
+        user: currentStoreState.user,
+        isLoggedIn: currentStoreState.isLoggedIn,
+        authData: currentStoreState.authData,
+        token: currentStoreState.token,
+        partnerProfile: profile,
+      });
     } catch (error) {
       console.error('Error refreshing partner profile:', error);
       useAuthStore.setState({

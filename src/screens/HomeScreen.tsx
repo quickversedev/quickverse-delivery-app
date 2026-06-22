@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
   RefreshControl,
   Linking,
   Platform,
+  AppState,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -34,20 +35,7 @@ import {
   getBestEffortCurrentLocation,
   type Coordinate,
 } from '../utils/location';
-import {
-  MapPin,
-  Phone,
-  Navigation,
-  Calendar,
-  Clock,
-  ChevronRight,
-  Copy,
-  CircleDot,
-  Circle,
-  CheckCircle2,
-  ChevronDown,
-  ChevronUp,
-} from 'lucide-react-native';
+import { ChevronDown, ChevronUp } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle as SvgCircle } from 'react-native-svg';
 
@@ -64,11 +52,311 @@ type ParsedCustomerAddress = {
   longitude: number | null;
 };
 
+const UNASSIGN_WINDOW_MS = 150_000;
+
+type LiveOrderCardProps = {
+  order: DeliveryPartnerOrder;
+};
+
+const LiveOrderCard: React.FC<LiveOrderCardProps> = ({ order }) => {
+  const navigation =
+    useNavigation<NativeStackNavigationProp<AppStackParamList>>();
+  const { getPricingValues } = usePricingStore();
+
+  const getSecondsLeft = () => {
+    const raw = order.createdAt ?? order.orderDetails?.creationTime;
+    const created = Number(raw);
+    if (!raw || !Number.isFinite(created) || created <= 0) return 0;
+    return Math.max(
+      0,
+      Math.ceil((created + UNASSIGN_WINDOW_MS - Date.now()) / 1000),
+    );
+  };
+
+  const [secondsLeft, setSecondsLeft] = useState(getSecondsLeft);
+
+  useEffect(() => {
+    setSecondsLeft(getSecondsLeft());
+    const interval = setInterval(() => setSecondsLeft(getSecondsLeft()), 1000);
+    const sub = AppState.addEventListener('change', state => {
+      if (state === 'active') setSecondsLeft(getSecondsLeft());
+    });
+    return () => {
+      clearInterval(interval);
+      sub.remove();
+    };
+  }, [order.createdAt]);
+
+  const expired = secondsLeft <= 0;
+  const mins = Math.floor(secondsLeft / 60);
+  const secs = secondsLeft % 60;
+  const timerText = `${mins}:${String(secs).padStart(2, '0')}`;
+
+  const liveAmountExcludingDeliveryFee =
+    order.orderDetails?.amountExcludingDeliveryFee ?? 0;
+  const orderStatus = order.orderStatus?.toUpperCase() ?? '';
+  const liveServiceType: ServiceType = order.shopDetails?.category
+    ?.toLowerCase()
+    .includes('grocery')
+    ? 'GROCERY'
+    : 'FOOD';
+  const livePricing = getPricingValues(liveServiceType);
+  const liveCommission =
+    livePricing.commissionRate * liveAmountExcludingDeliveryFee;
+  const liveTaxableAmount =
+    liveCommission + livePricing.deliveryFee + livePricing.platformFee;
+  const liveTaxes = Math.round(livePricing.gstRate * liveTaxableAmount);
+  const liveComputedTotal =
+    liveAmountExcludingDeliveryFee +
+    livePricing.deliveryFee +
+    livePricing.platformFee +
+    livePricing.packagingCharges +
+    liveTaxes;
+
+  const formatCurrencyLocal = (amount: number) =>
+    `₹${Number.isFinite(amount) ? amount.toFixed(2) : '0.00'}`;
+
+  const formatStatusLabelLocal = (status: string) =>
+    status
+      .split('_')
+      .map(w => w.charAt(0) + w.slice(1).toLowerCase())
+      .join(' ');
+
+  const parseDateValueLocal = (value: string | null): Date | null => {
+    if (!value) return null;
+    const num = Number(value);
+    if (Number.isFinite(num) && num > 0) return new Date(num);
+    const d = new Date(value.includes(' ') ? value.replace(' ', 'T') : value);
+    return isNaN(d.getTime()) ? null : d;
+  };
+
+  const orderDateTime = (() => {
+    const d = parseDateValueLocal(
+      order.orderDetails?.creationTime ?? order.createdAt ?? null,
+    );
+    if (!d) return { date: 'N/A', time: '' };
+    return {
+      date: `${String(d.getDate()).padStart(2, '0')}/${String(
+        d.getMonth() + 1,
+      ).padStart(2, '0')}/${String(d.getFullYear()).slice(-2)}`,
+      time: d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+  })();
+
+  return (
+    <TouchableOpacity
+      style={styles.liveCard}
+      activeOpacity={0.85}
+      onPress={() => navigation.navigate('OrderDelivery', { order })}
+    >
+      <View style={styles.livePulseRow}>
+        <View style={styles.liveDot} />
+        <Text style={styles.liveLabel}>Live Order</Text>
+        <View style={styles.liveTimeBadge}>
+          <Text style={styles.liveTimeText}>
+            {orderDateTime.time || orderDateTime.date}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.liveSubRow}>
+        <Text style={styles.liveOrderId}>#{order.orderId || order.id}</Text>
+        <View style={styles.liveStatePill}>
+          <Text style={styles.liveStatePillText}>
+            {formatStatusLabelLocal(
+              order.orderDetails?.state?.toUpperCase() ?? 'UNKNOWN',
+            )}
+          </Text>
+        </View>
+      </View>
+
+      <View
+        style={{
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginTop: 6,
+        }}
+      >
+        <Text style={styles.liveLocName}>
+          {order.orderDetails?.customerName || 'Customer'}
+        </Text>
+        <Text style={styles.liveEarningsInline}>
+          {formatCurrencyLocal(liveComputedTotal)}
+        </Text>
+      </View>
+
+      <Text style={[styles.liveLocAddress, { marginTop: 2 }]}>
+        {order.shopDetails?.name || 'Shop'}
+      </Text>
+
+      <View
+        style={[
+          liveTimerStyles.timerRow,
+          expired
+            ? liveTimerStyles.timerRowExpired
+            : liveTimerStyles.timerRowActive,
+        ]}
+      >
+        <Text
+          style={[
+            liveTimerStyles.timerIcon,
+            { color: expired ? '#DC2626' : '#B45309' },
+          ]}
+        >
+          {expired ? '⏰' : '⏱'}
+        </Text>
+        <View style={{ flex: 1 }}>
+          {!expired ? (
+            <>
+              <Text style={liveTimerStyles.timerActiveLabel}>
+                Contact admin to unassign within{' '}
+                <Text style={liveTimerStyles.timerCountdown}>{timerText}</Text>
+              </Text>
+              <Text style={liveTimerStyles.timerSubLabel}>
+                Reach out to admin during this window if you need order
+                unassignment
+              </Text>
+            </>
+          ) : (
+            <Text style={liveTimerStyles.timerExpiredLabel}>
+              Unassign window has expired
+            </Text>
+          )}
+        </View>
+      </View>
+
+      <View
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          marginTop: 10,
+          marginBottom: 4,
+        }}
+      >
+        {['At Store', 'Picked Up', 'Reach Destination', 'Delivered'].map(
+          (label, i) => {
+            const stageMap: Record<string, number> = {
+              ACCEPTED: 0,
+              PARTNER_ASSIGNED: 0,
+              ARRIVED_AT_STORE: 1,
+              ORDER_PICKED_UP: 2,
+              REACHED_LOCATION: 3,
+              DELIVERED: 4,
+            };
+            const currentIdx = stageMap[orderStatus] ?? 0;
+            const done = i < currentIdx;
+            const active = i === currentIdx;
+            return (
+              <React.Fragment key={label}>
+                <View style={{ alignItems: 'center' }}>
+                  <View
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: 4,
+                      backgroundColor: done
+                        ? '#16A34A'
+                        : active
+                        ? '#0E6DFD'
+                        : '#E2E8F0',
+                    }}
+                  />
+                  <Text
+                    style={{
+                      fontSize: 8,
+                      color: active ? '#0E6DFD' : '#94A3B8',
+                      marginTop: 2,
+                      fontFamily: FONT_FAMILY.bricolageMedium,
+                    }}
+                  >
+                    {label}
+                  </Text>
+                </View>
+                {i < 3 && (
+                  <View
+                    style={{
+                      flex: 1,
+                      height: 2,
+                      backgroundColor: done ? '#16A34A' : '#E2E8F0',
+                      marginBottom: 10,
+                    }}
+                  />
+                )}
+              </React.Fragment>
+            );
+          },
+        )}
+      </View>
+
+      <TouchableOpacity
+        style={[
+          styles.stageActionButton,
+          { marginTop: 12, backgroundColor: '#0E6DFD' },
+        ]}
+        activeOpacity={0.85}
+        onPress={() => navigation.navigate('OrderDelivery', { order })}
+      >
+        <Text style={styles.stageActionButtonText}>Manage Delivery</Text>
+      </TouchableOpacity>
+    </TouchableOpacity>
+  );
+};
+
+const liveTimerStyles = StyleSheet.create({
+  timerRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginTop: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  timerRowActive: {
+    backgroundColor: '#FFFBEB',
+    borderColor: '#FDE68A',
+  },
+  timerRowExpired: {
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FCA5A5',
+  },
+  timerIcon: {
+    fontSize: 14,
+    marginTop: 1,
+  },
+  timerActiveLabel: {
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#92400E',
+    lineHeight: 17,
+  },
+  timerCountdown: {
+    fontSize: 13,
+    fontFamily: FONT_FAMILY.bricolageBold,
+    color: '#B45309',
+  },
+  timerSubLabel: {
+    marginTop: 2,
+    fontSize: 10,
+    fontFamily: FONT_FAMILY.outfitRegular,
+    color: '#A16207',
+    lineHeight: 14,
+  },
+  timerExpiredLabel: {
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#DC2626',
+  },
+});
+
 const HomeScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const navigation =
     useNavigation<NativeStackNavigationProp<AppStackParamList>>();
   const { partnerProfile, isPartnerLoading, logout, authData } = useAuthStore();
+
   const [isOnline, setIsOnline] = useState(false);
   const [isToggling, setIsToggling] = useState(false);
   const [orders, setOrders] = useState<DeliveryPartnerOrder[]>([]);
@@ -87,7 +375,6 @@ const HomeScreen: React.FC = () => {
   const [statsFilter, setStatsFilter] = useState<
     'daily' | 'weekly' | 'monthly' | 'allTime'
   >('daily');
-
   const [timeRangeFilter, setTimeRangeFilter] = useState<
     'all' | 'today' | 'week' | 'month'
   >('all');
@@ -111,12 +398,13 @@ const HomeScreen: React.FC = () => {
   const [otpError, setOtpError] = useState('');
   const [otpLoading, setOtpLoading] = useState(false);
 
+  const hasLoadedOnce = useRef(false);
+
   const { fetchPricing, getPricingValues } = usePricingStore();
 
   useEffect(() => {
     fetchPricing('FOOD');
     fetchPricing('GROCERY');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -128,16 +416,12 @@ const HomeScreen: React.FC = () => {
   const partnerId = partnerProfile?.id || authData.partnerId || '';
 
   const parseDateValue = (value: string | null): Date | null => {
-    if (!value) {
-      return null;
-    }
-
+    if (!value) return null;
     const numericTimestamp = Number(value);
     if (Number.isFinite(numericTimestamp) && numericTimestamp > 0) {
       const fromEpoch = new Date(numericTimestamp);
       return Number.isNaN(fromEpoch.getTime()) ? null : fromEpoch;
     }
-
     const normalized = value.includes(' ') ? value.replace(' ', 'T') : value;
     const fromString = new Date(normalized);
     return Number.isNaN(fromString.getTime()) ? null : fromString;
@@ -152,19 +436,14 @@ const HomeScreen: React.FC = () => {
 
   const getUniqueLatestOrders = (allOrders: DeliveryPartnerOrder[]) => {
     const latestByOrderId = new Map<string, DeliveryPartnerOrder>();
-
     allOrders.forEach(order => {
       const key = order.orderId || order.id;
-      if (!key) {
-        return;
-      }
-
+      if (!key) return;
       const existing = latestByOrderId.get(key);
       if (!existing || getOrderTimestamp(order) > getOrderTimestamp(existing)) {
         latestByOrderId.set(key, order);
       }
     });
-
     return Array.from(latestByOrderId.values()).sort(
       (a, b) => getOrderTimestamp(b) - getOrderTimestamp(a),
     );
@@ -184,10 +463,7 @@ const HomeScreen: React.FC = () => {
       setOrders([]);
       return;
     }
-
-    if (!options?.silent) {
-      setIsOrdersLoading(true);
-    }
+    if (!options?.silent) setIsOrdersLoading(true);
     setOrdersError(null);
     try {
       const response =
@@ -197,17 +473,12 @@ const HomeScreen: React.FC = () => {
       console.error('Fetch assigned orders failed', error);
       setOrdersError('Unable to load your assigned orders. Please try again.');
     } finally {
-      if (!options?.silent) {
-        setIsOrdersLoading(false);
-      }
+      if (!options?.silent) setIsOrdersLoading(false);
     }
   };
 
   const handleRefreshOrders = async () => {
-    if (!partnerId) {
-      return;
-    }
-
+    if (!partnerId) return;
     setIsOrdersRefreshing(true);
     try {
       await fetchAssignedOrders({ silent: true });
@@ -217,9 +488,7 @@ const HomeScreen: React.FC = () => {
   };
 
   const fetchPartnerStats = async () => {
-    if (!partnerId) {
-      return;
-    }
+    if (!partnerId) return;
     setIsStatsLoading(true);
     try {
       const data = await deliveryPartnerService.getDeliveryPartnerStats(
@@ -234,14 +503,19 @@ const HomeScreen: React.FC = () => {
   };
 
   useEffect(() => {
-    if (!partnerId) {
-      return;
-    }
-
+    if (!partnerId) return;
     fetchCurrentLocation();
-
     if (activeTab === 'orders') {
-      fetchAssignedOrders();
+      if (!hasLoadedOnce.current) {
+        fetchAssignedOrders();
+        hasLoadedOnce.current = true;
+      } else {
+        fetchAssignedOrders({ silent: true });
+      }
+      const intervalId = setInterval(() => {
+        fetchAssignedOrders({ silent: true });
+      }, 5000);
+      return () => clearInterval(intervalId);
     } else if (activeTab === 'dashboard') {
       fetchPartnerStats();
     }
@@ -263,9 +537,7 @@ const HomeScreen: React.FC = () => {
   );
 
   useEffect(() => {
-    if (!partnerId) {
-      return;
-    }
+    if (!partnerId) return;
     websocketService.connect(partnerId, handleWebSocketEvent);
     const unsubscribe = websocketService.onStatusChange(setWsConnected);
     return () => {
@@ -279,11 +551,9 @@ const HomeScreen: React.FC = () => {
       Alert.alert('Partner ID missing', 'Unable to update online status.');
       return;
     }
-
     const nextStatus = !isOnline;
     setIsOnline(nextStatus);
     setIsToggling(true);
-
     try {
       await deliveryPartnerService.toggleDeliveryPartnerOnlineStatus(
         partnerId,
@@ -291,7 +561,7 @@ const HomeScreen: React.FC = () => {
       );
     } catch (error) {
       setIsOnline(!nextStatus);
-      console.error('Toggle online status failed', error);
+      console.log('Toggle online status failed', error);
       Alert.alert(
         'Status update failed',
         'Unable to switch your online status. Please try again.',
@@ -305,9 +575,8 @@ const HomeScreen: React.FC = () => {
 
   const getOrderEpochMs = (order: DeliveryPartnerOrder): number => {
     const fromCreatedAt = Number(order.createdAt);
-    if (Number.isFinite(fromCreatedAt) && fromCreatedAt > 0) {
+    if (Number.isFinite(fromCreatedAt) && fromCreatedAt > 0)
       return fromCreatedAt;
-    }
     return getOrderTimestamp(order);
   };
 
@@ -317,11 +586,8 @@ const HomeScreen: React.FC = () => {
     LIVE_INNER_STATES.includes(o.orderDetails?.state?.toUpperCase() ?? '');
 
   const clearOrders = orders.filter(o => o.orderStatus !== 'UNASSIGNED');
-
   const liveOrders = clearOrders.filter(isOrderLive);
-
   const liveOrderIds = new Set(liveOrders.map(o => o.id || o.orderId));
-
   const pastOrders = clearOrders.filter(
     o => !liveOrderIds.has(o.id || o.orderId),
   );
@@ -362,10 +628,6 @@ const HomeScreen: React.FC = () => {
       .map(w => w.charAt(0) + w.slice(1).toLowerCase())
       .join(' ');
 
-  const handleLogoutPress = () => {
-    setIsLogoutModalVisible(true);
-  };
-
   const handleConfirmLogout = async () => {
     setIsLogoutModalVisible(false);
     await logout();
@@ -373,10 +635,7 @@ const HomeScreen: React.FC = () => {
 
   const formatOrderDateTime = (value: string | null) => {
     const parsedDate = parseDateValue(value);
-    if (!parsedDate) {
-      return { date: 'N/A', time: '' };
-    }
-
+    if (!parsedDate) return { date: 'N/A', time: '' };
     return {
       date: `${String(parsedDate.getDate()).padStart(2, '0')}/${String(
         parsedDate.getMonth() + 1,
@@ -388,30 +647,23 @@ const HomeScreen: React.FC = () => {
     };
   };
 
-  const formatCurrency = (amount: number) => {
-    return `₹${Number.isFinite(amount) ? amount.toFixed(2) : '0.00'}`;
-  };
+  const formatCurrency = (amount: number) =>
+    `₹${Number.isFinite(amount) ? amount.toFixed(2) : '0.00'}`;
 
   const parseCustomerAddress = (
     rawAddress: string | null,
   ): ParsedCustomerAddress => {
-    if (!rawAddress) {
-      return { text: 'N/A', latitude: null, longitude: null };
-    }
-
+    if (!rawAddress) return { text: 'N/A', latitude: null, longitude: null };
     const cleaned = rawAddress.replace(/^\{/, '').replace(/\}$/, '');
     const entries = [
       ...cleaned.matchAll(/(\w+)=([^,]+(?:,(?!\s*\w+=)[^,]+)*)/g),
     ];
     const map: Record<string, string> = {};
-
     entries.forEach(([, key, value]) => {
       map[key] = value.trim();
     });
-
     const latitude = map.latitude ? Number(map.latitude) : null;
     const longitude = map.longitude ? Number(map.longitude) : null;
-
     const formattedAddress = [
       map.addressLine1,
       map.addressLine2,
@@ -422,7 +674,6 @@ const HomeScreen: React.FC = () => {
     ]
       .filter(Boolean)
       .join(', ');
-
     return {
       text: formattedAddress || cleaned,
       latitude: Number.isFinite(latitude) ? latitude : null,
@@ -435,14 +686,12 @@ const HomeScreen: React.FC = () => {
     const earthRadiusKm = 6371;
     const deltaLat = toRad(to.latitude - from.latitude);
     const deltaLon = toRad(to.longitude - from.longitude);
-
     const haversine =
       Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2) +
       Math.cos(toRad(from.latitude)) *
         Math.cos(toRad(to.latitude)) *
         Math.sin(deltaLon / 2) *
         Math.sin(deltaLon / 2);
-
     return (
       earthRadiusKm *
       (2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine)))
@@ -450,15 +699,9 @@ const HomeScreen: React.FC = () => {
   };
 
   const formatDistance = (destination: Coordinate | null) => {
-    if (!currentLocation || !destination) {
-      return null;
-    }
-
+    if (!currentLocation || !destination) return null;
     const km = getDistanceKm(currentLocation, destination);
-    if (km < 1) {
-      return `${Math.round(km * 1000)} m away`;
-    }
-
+    if (km < 1) return `${Math.round(km * 1000)} m away`;
     return `${km.toFixed(1)} km away`;
   };
 
@@ -468,11 +711,8 @@ const HomeScreen: React.FC = () => {
   }) => {
     const lat = destination.coordinate?.latitude;
     const lng = destination.coordinate?.longitude;
-
     const label = destination.fallbackQuery;
-
     let url = '';
-
     if (Platform.OS === 'ios') {
       url =
         lat && lng
@@ -484,7 +724,6 @@ const HomeScreen: React.FC = () => {
           ? `google.navigation:q=${lat},${lng}`
           : `geo:0,0?q=${encodeURIComponent(label)}`;
     }
-
     try {
       await Linking.openURL(url);
     } catch (error) {
@@ -495,11 +734,8 @@ const HomeScreen: React.FC = () => {
   const toggleOrderExpanded = (orderId: string) => {
     setExpandedOrderIds(prev => {
       const next = new Set(prev);
-      if (next.has(orderId)) {
-        next.delete(orderId);
-      } else {
-        next.add(orderId);
-      }
+      if (next.has(orderId)) next.delete(orderId);
+      else next.add(orderId);
       return next;
     });
   };
@@ -507,11 +743,8 @@ const HomeScreen: React.FC = () => {
   const toggleItemsExpanded = (orderId: string) => {
     setExpandedItemIds(prev => {
       const next = new Set(prev);
-      if (next.has(orderId)) {
-        next.delete(orderId);
-      } else {
-        next.add(orderId);
-      }
+      if (next.has(orderId)) next.delete(orderId);
+      else next.add(orderId);
       return next;
     });
   };
@@ -528,7 +761,6 @@ const HomeScreen: React.FC = () => {
     const orderDateTime = formatOrderDateTime(
       order.orderDetails?.creationTime ?? order.createdAt,
     );
-    const totalAmount = order.orderDetails?.totalAmount ?? 0;
     const shopName = order.shopDetails?.name || 'Shop';
     const customerName =
       order.orderDetails?.customerName || order.orderId || 'N/A';
@@ -537,7 +769,6 @@ const HomeScreen: React.FC = () => {
         order.orderStatus?.toUpperCase() ??
         'UNKNOWN',
     );
-
     const shopId = order.orderDetails?.shopId ?? order.shopId;
     const paymentMethod =
       order.orderDetails?.paymentMethod ?? order.paymentMethod ?? 'N/A';
@@ -552,8 +783,6 @@ const HomeScreen: React.FC = () => {
             longitude: customerAddress.longitude,
           }
         : null;
-    const customerDistance = formatDistance(customerCoordinate);
-
     const shopAddressText = [
       order.shopDetails?.address?.address,
       order.shopDetails?.address?.city,
@@ -582,10 +811,8 @@ const HomeScreen: React.FC = () => {
             longitude: order.shopDetails.longitude,
           }
         : null;
-    const shopDistance = formatDistance(shopCoordinate);
     const shopImage =
       order.shopDetails?.banner || order.shopDetails?.logo || null;
-
     const orderDescription =
       order.orderDetails?.orderDescription ||
       (order.orderDetails?.orderItem?.length
@@ -594,7 +821,6 @@ const HomeScreen: React.FC = () => {
     const itemCount = order.orderDetails?.totalItemCount ?? 0;
     const amountExcludingDeliveryFee =
       order.orderDetails?.amountExcludingDeliveryFee ?? 0;
-
     const serviceType: ServiceType = order.shopDetails?.category
       ?.toLowerCase()
       .includes('grocery')
@@ -620,7 +846,6 @@ const HomeScreen: React.FC = () => {
         onPress={() => toggleOrderExpanded(cardId)}
         activeOpacity={0.85}
       >
-        {/* Collapsed header — always visible */}
         <View style={styles.orderCardTopRow}>
           <View style={styles.orderCardHeaderLeft}>
             <Text style={styles.orderIdText}>{customerName}</Text>
@@ -656,7 +881,6 @@ const HomeScreen: React.FC = () => {
           )}
         </View>
 
-        {/* Expanded details */}
         {isExpanded && (
           <>
             <View style={styles.sectionBlock}>
@@ -795,19 +1019,6 @@ const HomeScreen: React.FC = () => {
     );
   };
 
-  const TIMELINE_STEPS = [
-    { key: 'PARTNER_ASSIGNED', label: 'Assigned' },
-    { key: 'PARTNER_ACCEPTED', label: 'Accepted' },
-    { key: 'PREPARATION', label: 'Preparing' },
-    { key: 'ON_THE_WAY', label: 'Picked Up' },
-    { key: 'DELIVERED', label: 'Delivered' },
-  ];
-
-  const getTimelineIndex = (status: string) => {
-    const idx = TIMELINE_STEPS.findIndex(s => s.key === status.toUpperCase());
-    return idx >= 0 ? idx : -1;
-  };
-
   const DELIVERY_STAGES = [
     {
       stateMatch: ['ACCEPTED', 'PARTNER_ASSIGNED'],
@@ -839,55 +1050,8 @@ const HomeScreen: React.FC = () => {
     },
   ];
 
-  const getDeliveryStageForOrder = (order: DeliveryPartnerOrder) => {
-    console.log('Order Status : ', order.orderStatus);
-    const state = order.orderStatus?.toUpperCase() ?? '';
-    console.log(state);
-    return (
-      DELIVERY_STAGES.find(stage => stage.stateMatch.includes(state)) ?? null
-    );
-  };
-
-  const handleStageAction = async (order: DeliveryPartnerOrder) => {
-    const stage = getDeliveryStageForOrder(order);
-    if (!stage) return;
-
-    const orderMasterId = order.id;
-
-    // if (stage.requiresOtp) {
-    //   setOtpModalConfig({
-    //     orderId: orderMasterId,
-    //     title: stage.otpTitle!,
-    //     message: stage.otpMessage!,
-    //     apiAction: stage.apiAction as 'pickup' | 'completeDelivery',
-    //   });
-    //   setOtpError('');
-    //   setOtpModalVisible(true);
-    //   return;
-    // }
-
-    setStageLoadingOrderId(orderMasterId);
-    try {
-      if (stage.apiAction === 'arriveStore') {
-        await deliveryPartnerService.arriveAtStore(orderMasterId);
-      } else if (stage.apiAction === 'pickup') {
-        await deliveryPartnerService.pickupOrder(orderMasterId);
-      } else if (stage.apiAction === 'arriveDestination') {
-        await deliveryPartnerService.arriveAtDestination(orderMasterId);
-      } else if (stage.apiAction === 'completeDelivery') {
-        await deliveryPartnerService.completeDelivery(orderMasterId);
-      }
-      await fetchAssignedOrders({ silent: true });
-    } catch (error: any) {
-      console.log('Error : ', error);
-    } finally {
-      setStageLoadingOrderId(null);
-    }
-  };
-
   const handleOtpSubmit = async (otp: string) => {
     if (!otpModalConfig) return;
-
     setOtpLoading(true);
     setOtpError('');
     try {
@@ -915,439 +1079,6 @@ const HomeScreen: React.FC = () => {
     setOtpModalConfig(null);
     setOtpError('');
     setOtpLoading(false);
-  };
-
-  // const renderLiveOrderCard = (order: DeliveryPartnerOrder) => {
-  //   const liveCardId = order.id || order.orderId;
-  //   const orderStatus = order.orderStatus?.toUpperCase() ?? '';
-  //   const currentStepIdx = getTimelineIndex(orderStatus);
-  //   const shopId = order.orderDetails?.shopId ?? order.shopId;
-  //   const liveItemCount = order.orderDetails?.totalItemCount ?? 0;
-  //   const paymentMethod =
-  //     order.orderDetails?.paymentMethod ?? order.paymentMethod ?? 'N/A';
-  //   const totalAmount = order.orderDetails?.totalAmount ?? 0;
-  //   const customerAddress = parseCustomerAddress(
-  //     order.orderDetails?.customerAddress ?? null,
-  //   );
-  //   const customerCoordinate =
-  //     customerAddress.latitude != null && customerAddress.longitude != null
-  //       ? {
-  //           latitude: customerAddress.latitude,
-  //           longitude: customerAddress.longitude,
-  //         }
-  //       : null;
-  //   const customerDistance = formatDistance(customerCoordinate);
-
-  //   const shopAddressText = [
-  //     order.shopDetails?.address?.address,
-  //     order.shopDetails?.address?.city,
-  //     order.shopDetails?.address?.state,
-  //   ]
-  //     .filter(Boolean)
-  //     .join(', ');
-  //   const shopCoordinate =
-  //     order.shopDetails?.address?.latitude != null &&
-  //     order.shopDetails?.address?.longitude != null
-  //       ? {
-  //           latitude: order.shopDetails.address.latitude,
-  //           longitude: order.shopDetails.address.longitude,
-  //         }
-  //       : order.shopDetails?.coordinates?.latitude != null &&
-  //         order.shopDetails?.coordinates?.longitude != null
-  //       ? {
-  //           latitude: order.shopDetails.coordinates.latitude,
-  //           longitude: order.shopDetails.coordinates.longitude,
-  //         }
-  //       : order.shopDetails?.latitude != null &&
-  //         order.shopDetails?.longitude != null
-  //       ? {
-  //           latitude: order.shopDetails.latitude,
-  //           longitude: order.shopDetails.longitude,
-  //         }
-  //       : null;
-  //   const shopDistance = formatDistance(shopCoordinate);
-  //   const shopImage =
-  //     order.shopDetails?.banner || order.shopDetails?.logo || null;
-
-  //   const orderDateTime = formatOrderDateTime(
-  //     order.orderDetails?.creationTime ?? order.createdAt,
-  //   );
-
-  //   const liveAmountExcludingDeliveryFee =
-  //     order.orderDetails?.amountExcludingDeliveryFee ?? 0;
-  //   const liveServiceType: ServiceType = order.shopDetails?.category
-  //     ?.toLowerCase()
-  //     .includes('grocery')
-  //     ? 'GROCERY'
-  //     : 'FOOD';
-  //   const livePricing = getPricingValues(liveServiceType);
-  //   const liveCommission =
-  //     livePricing.commissionRate * liveAmountExcludingDeliveryFee;
-  //   const liveTaxableAmount =
-  //     liveCommission + livePricing.deliveryFee + livePricing.platformFee;
-  //   const liveTaxes = Math.round(livePricing.gstRate * liveTaxableAmount);
-  //   const liveComputedTotal =
-  //     liveAmountExcludingDeliveryFee +
-  //     livePricing.deliveryFee +
-  //     livePricing.platformFee +
-  //     livePricing.packagingCharges +
-  //     liveTaxes;
-
-  //   return (
-  //     <View
-  //       key={order.id || order.orderId}
-  //       style={[styles.liveCard, { marginBottom: 12 }]}
-  //     >
-  //       <View style={styles.livePulseRow}>
-  //         <View style={styles.liveDot} />
-  //         <Text style={styles.liveLabel}>Live Order</Text>
-  //         <View style={styles.liveTimeBadge}>
-  //           <Text style={styles.liveTimeText}>
-  //             {orderDateTime.time || orderDateTime.date}
-  //           </Text>
-  //         </View>
-  //       </View>
-  //       <View style={styles.liveSubRow}>
-  //         <Text style={styles.liveOrderId}>#{order.orderId || order.id}</Text>
-  //         <View style={styles.liveStatePill}>
-  //           <Text style={styles.liveStatePillText}>
-  //             {formatStatusLabel(
-  //               order.orderDetails?.state?.toUpperCase() ?? 'UNKNOWN',
-  //             )}
-  //           </Text>
-  //         </View>
-  //       </View>
-
-  //       {/* Pickup */}
-  //       <View style={styles.liveLocationRow}>
-  //         {shopImage ? (
-  //           <Image source={{ uri: shopImage }} style={styles.liveLocImage} />
-  //         ) : (
-  //           <View style={styles.liveLocIconWrap}>
-  //             <MapPin size={16} color="#0E6DFD" />
-  //           </View>
-  //         )}
-  //         <View style={styles.liveLocInfo}>
-  //           <Text style={styles.liveLocName}>
-  //             {order.shopDetails?.name || `Shop ${shopId ?? 'N/A'}`}
-  //           </Text>
-  //           <Text style={styles.liveLocAddress} numberOfLines={2}>
-  //             {shopAddressText || 'Address unavailable'}
-  //           </Text>
-  //           {shopDistance ? (
-  //             <Text style={styles.liveLocDistance}>{shopDistance}</Text>
-  //           ) : null}
-  //         </View>
-  //         <TouchableOpacity
-  //           onPress={() =>
-  //             openDirections({
-  //               coordinate: shopCoordinate,
-  //               fallbackQuery: shopAddressText || order.shopDetails?.name || '',
-  //             })
-  //           }
-  //           style={styles.liveNavButton}
-  //           activeOpacity={0.8}
-  //         >
-  //           <Navigation size={14} color="#FFFFFF" />
-  //         </TouchableOpacity>
-  //       </View>
-
-  //       <View style={styles.liveConnector} />
-
-  //       {/* Drop */}
-  //       <View style={styles.liveLocationRow}>
-  //         <View
-  //           style={[styles.liveLocIconWrap, { backgroundColor: '#FEF2F2' }]}
-  //         >
-  //           <MapPin size={16} color="#EF4444" />
-  //         </View>
-  //         <View style={styles.liveLocInfo}>
-  //           <Text style={styles.liveLocName}>
-  //             {order.orderDetails?.customerName || 'Customer'}
-  //           </Text>
-  //           <Text style={styles.liveLocAddress} numberOfLines={2}>
-  //             {customerAddress.text}
-  //           </Text>
-  //           {customerDistance ? (
-  //             <Text style={styles.liveLocDistance}>{customerDistance}</Text>
-  //           ) : null}
-  //         </View>
-  //         <TouchableOpacity
-  //           onPress={() =>
-  //             openDirections({
-  //               coordinate: customerCoordinate,
-  //               fallbackQuery: customerAddress.text,
-  //             })
-  //           }
-  //           style={[styles.liveNavButton, { backgroundColor: '#EF4444' }]}
-  //           activeOpacity={0.8}
-  //         >
-  //           <Navigation size={14} color="#FFFFFF" />
-  //         </TouchableOpacity>
-  //       </View>
-
-  //       {order.orderDetails?.customerMobile && (
-  //         <TouchableOpacity
-  //           style={styles.liveCallRow}
-  //           onPress={() =>
-  //             Linking.openURL(
-  //               `tel:${String(order.orderDetails!.customerMobile).slice(-10)}`,
-  //             )
-  //           }
-  //           activeOpacity={0.7}
-  //         >
-  //           <View style={styles.liveCallIconWrap}>
-  //             <Phone size={14} color="#FFFFFF" />
-  //           </View>
-  //           <Text style={styles.liveCallText}>
-  //             {String(order.orderDetails.customerMobile).slice(-10)}
-  //           </Text>
-  //           <Text style={styles.liveCallAction}>Call Customer</Text>
-  //         </TouchableOpacity>
-  //       )}
-
-  //       {(order.orderDetails?.orderItem?.length ?? 0) > 0 && (
-  //         <>
-  //           <TouchableOpacity
-  //             style={styles.itemsToggleRow}
-  //             onPress={() => toggleItemsExpanded(liveCardId)}
-  //             activeOpacity={0.7}
-  //           >
-  //             <Text style={styles.itemsToggleText}>
-  //               {liveItemCount} item{liveItemCount > 1 ? 's' : ''}
-  //             </Text>
-  //             {expandedItemIds.has(liveCardId) ? (
-  //               <ChevronUp size={14} color="#0E6DFD" />
-  //             ) : (
-  //               <ChevronDown size={14} color="#0E6DFD" />
-  //             )}
-  //           </TouchableOpacity>
-  //           {expandedItemIds.has(liveCardId) &&
-  //             order.orderDetails!.orderItem.map(item => (
-  //               <View key={item.id} style={styles.itemRow}>
-  //                 <Text style={styles.itemName} numberOfLines={1}>
-  //                   {item.name}
-  //                 </Text>
-  //                 <Text style={styles.itemCount}>x{item.itemCount}</Text>
-  //               </View>
-  //             ))}
-  //         </>
-  //       )}
-
-  //       <BillSummaryCard
-  //         totalAmount={liveComputedTotal}
-  //         subtotal={liveAmountExcludingDeliveryFee}
-  //         deliveryFee={livePricing.deliveryFee}
-  //         deliveryFeeOriginal={livePricing.deliveryFeeOriginal}
-  //         platformFee={livePricing.platformFee}
-  //         platformFeeOriginal={livePricing.platformFeeOriginal}
-  //         packagingCharges={livePricing.packagingCharges}
-  //         packagingChargesOriginal={livePricing.packagingChargesOriginal}
-  //         taxes={liveTaxes}
-  //         commission={liveCommission}
-  //         taxableAmount={liveTaxableAmount}
-  //         commissionRate={livePricing.commissionRate}
-  //         gstRate={livePricing.gstRate}
-  //       />
-
-  //       {(() => {
-  //         const stage = getDeliveryStageForOrder(order);
-  //         if (!stage) return null;
-  //         const isLoading = stageLoadingOrderId === order.id;
-
-  //         return (
-  //           <TouchableOpacity
-  //             style={styles.stageActionButton}
-  //             onPress={() => handleStageAction(order)}
-  //             disabled={isLoading}
-  //             activeOpacity={0.85}
-  //           >
-  //             {isLoading ? (
-  //               <ActivityIndicator size="small" color="#FFFFFF" />
-  //             ) : (
-  //               <Text style={styles.stageActionButtonText}>
-  //                 {stage.buttonLabel}
-  //               </Text>
-  //             )}
-  //           </TouchableOpacity>
-  //         );
-  //       })()}
-
-  //       {!!order.orderDetails?.orderLink && (
-  //         <TouchableOpacity
-  //           style={styles.liveViewDetailsButton}
-  //           onPress={() =>
-  //             navigation.navigate('OrderWebView', {
-  //               url: order.orderDetails!.orderLink!,
-  //               title: `Order #${order.orderId || order.id}`,
-  //             })
-  //           }
-  //           activeOpacity={0.85}
-  //         >
-  //           <Text style={styles.liveViewDetailsButtonText}>
-  //             View Order Details
-  //           </Text>
-  //         </TouchableOpacity>
-  //       )}
-  //     </View>
-  //   );
-  // };
-
-  const renderLiveOrderCard = (order: DeliveryPartnerOrder) => {
-    const liveCardId = order.id || order.orderId;
-    const orderDateTime = formatOrderDateTime(
-      order.orderDetails?.creationTime ?? order.createdAt,
-    );
-    const liveAmountExcludingDeliveryFee =
-      order.orderDetails?.amountExcludingDeliveryFee ?? 0;
-    const orderStatus = order.orderStatus?.toUpperCase() ?? '';
-    const liveServiceType: ServiceType = order.shopDetails?.category
-      ?.toLowerCase()
-      .includes('grocery')
-      ? 'GROCERY'
-      : 'FOOD';
-    const livePricing = getPricingValues(liveServiceType);
-    const liveCommission =
-      livePricing.commissionRate * liveAmountExcludingDeliveryFee;
-    const liveTaxableAmount =
-      liveCommission + livePricing.deliveryFee + livePricing.platformFee;
-    const liveTaxes = Math.round(livePricing.gstRate * liveTaxableAmount);
-    const liveComputedTotal =
-      liveAmountExcludingDeliveryFee +
-      livePricing.deliveryFee +
-      livePricing.platformFee +
-      livePricing.packagingCharges +
-      liveTaxes;
-
-    return (
-      <TouchableOpacity
-        key={liveCardId}
-        style={styles.liveCard}
-        activeOpacity={0.85}
-        onPress={() => navigation.navigate('OrderDelivery', { order })}
-      >
-        {/* Pulse row */}
-        <View style={styles.livePulseRow}>
-          <View style={styles.liveDot} />
-          <Text style={styles.liveLabel}>Live Order</Text>
-          <View style={styles.liveTimeBadge}>
-            <Text style={styles.liveTimeText}>
-              {orderDateTime.time || orderDateTime.date}
-            </Text>
-          </View>
-        </View>
-
-        {/* Order ID + status */}
-        <View style={styles.liveSubRow}>
-          <Text style={styles.liveOrderId}>#{order.orderId || order.id}</Text>
-          <View style={styles.liveStatePill}>
-            <Text style={styles.liveStatePillText}>
-              {formatStatusLabel(
-                order.orderDetails?.state?.toUpperCase() ?? 'UNKNOWN',
-              )}
-            </Text>
-          </View>
-        </View>
-
-        {/* Customer + amount */}
-        <View
-          style={{
-            flexDirection: 'row',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginTop: 6,
-          }}
-        >
-          <Text style={styles.liveLocName}>
-            {order.orderDetails?.customerName || 'Customer'}
-          </Text>
-          <Text style={styles.liveEarningsInline}>
-            {formatCurrency(liveComputedTotal)}
-          </Text>
-        </View>
-
-        {/* Shop name */}
-        <Text style={[styles.liveLocAddress, { marginTop: 2 }]}>
-          {order.shopDetails?.name || 'Shop'}
-        </Text>
-
-        {/* Mini progress strip */}
-        <View
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            marginTop: 10,
-            marginBottom: 4,
-          }}
-        >
-          {['At Store', 'Picked Up', 'En Route', 'Delivered'].map(
-            (label, i) => {
-              const stageMap: Record<string, number> = {
-                ACCEPTED: 0,
-                PARTNER_ASSIGNED: 0,
-                ARRIVED_AT_STORE: 1,
-                ORDER_PICKED_UP: 2,
-                REACHED_LOCATION: 3,
-                DELIVERED: 4,
-              };
-              const currentIdx = stageMap[orderStatus] ?? 0;
-              const done = i < currentIdx;
-              const active = i === currentIdx;
-              return (
-                <React.Fragment key={label}>
-                  <View style={{ alignItems: 'center' }}>
-                    <View
-                      style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: 4,
-                        backgroundColor: done
-                          ? '#16A34A'
-                          : active
-                          ? '#0E6DFD'
-                          : '#E2E8F0',
-                      }}
-                    />
-                    <Text
-                      style={{
-                        fontSize: 8,
-                        color: active ? '#0E6DFD' : '#94A3B8',
-                        marginTop: 2,
-                        fontFamily: FONT_FAMILY.bricolageMedium,
-                      }}
-                    >
-                      {label}
-                    </Text>
-                  </View>
-                  {i < 3 && (
-                    <View
-                      style={{
-                        flex: 1,
-                        height: 2,
-                        backgroundColor: done ? '#16A34A' : '#E2E8F0',
-                        marginBottom: 10,
-                      }}
-                    />
-                  )}
-                </React.Fragment>
-              );
-            },
-          )}
-        </View>
-
-        {/* CTA */}
-        <TouchableOpacity
-          style={[
-            styles.stageActionButton,
-            { marginTop: 12, backgroundColor: '#0E6DFD' },
-          ]}
-          activeOpacity={0.85}
-          onPress={() => navigation.navigate('OrderDelivery', { order })}
-        >
-          <Text style={styles.stageActionButtonText}>Manage Delivery</Text>
-        </TouchableOpacity>
-      </TouchableOpacity>
-    );
   };
 
   const statsFilterOptions: {
@@ -1416,17 +1147,7 @@ const HomeScreen: React.FC = () => {
               <Text style={styles.headerSubtitle}>Transporter account</Text>
             </View>
           </View>
-
           <View style={styles.headerActions}>
-            {/* <TouchableOpacity
-              style={styles.headerLogoutButton}
-              onPress={handleLogoutPress}
-              activeOpacity={0.8}
-            >
-              <LogoutIcon size={16} color="#0E6DFD" />
-              <Text style={styles.headerLogoutText}>Logout</Text>
-            </TouchableOpacity> */}
-
             <TouchableOpacity
               onPress={() => navigation.navigate('Profile')}
               style={styles.headerAvatarWrap}
@@ -1501,7 +1222,6 @@ const HomeScreen: React.FC = () => {
               Dashboard
             </Text>
           </TouchableOpacity>
-
           <TouchableOpacity
             style={[
               styles.tabButton,
@@ -1755,7 +1475,12 @@ const HomeScreen: React.FC = () => {
               </Text>
             ) : (
               <>
-                {liveOrders.map(order => renderLiveOrderCard(order))}
+                {liveOrders.map(order => (
+                  <LiveOrderCard
+                    key={order.id || order.orderId}
+                    order={order}
+                  />
+                ))}
                 {pastOrders.length > 0 && (
                   <Text style={styles.pastOrdersHeading}>Order History</Text>
                 )}
@@ -1826,10 +1551,7 @@ const HomeScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F2F5FA',
-  },
+  container: { flex: 1, backgroundColor: '#F2F5FA' },
   backgroundGlowOne: {
     position: 'absolute',
     top: -60,
@@ -1848,23 +1570,15 @@ const styles = StyleSheet.create({
     borderRadius: 110,
     backgroundColor: 'rgba(17, 24, 39, 0.05)',
   },
-  content: {
-    flex: 1,
-    paddingHorizontal: 24,
-  },
-  contentContainer: {
-    paddingBottom: 32,
-  },
+  content: { flex: 1, paddingHorizontal: 24 },
+  contentContainer: { paddingBottom: 32 },
   customHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 20,
   },
-  headerTitleWrap: {
-    flex: 1,
-    paddingRight: 16,
-  },
+  headerTitleWrap: { flex: 1, paddingRight: 16 },
   headerTitle: {
     fontSize: 28,
     fontFamily: FONT_FAMILY.bricolageBold,
@@ -1881,31 +1595,13 @@ const styles = StyleSheet.create({
     fontFamily: FONT_FAMILY.outfitRegular,
     color: '#5C6980',
   },
-  wsDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-  },
-  wsDotOn: {
-    backgroundColor: '#22C55E',
-  },
-  wsDotOff: {
-    backgroundColor: '#EF4444',
-  },
-  wsLabel: {
-    fontSize: 12,
-    fontFamily: FONT_FAMILY.outfitRegular,
-  },
-  wsLabelOn: {
-    color: '#22C55E',
-  },
-  wsLabelOff: {
-    color: '#EF4444',
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
+  wsDot: { width: 7, height: 7, borderRadius: 4 },
+  wsDotOn: { backgroundColor: '#22C55E' },
+  wsDotOff: { backgroundColor: '#EF4444' },
+  wsLabel: { fontSize: 12, fontFamily: FONT_FAMILY.outfitRegular },
+  wsLabelOn: { color: '#22C55E' },
+  wsLabelOff: { color: '#EF4444' },
+  headerActions: { flexDirection: 'row', alignItems: 'center' },
   headerLogoutButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1930,19 +1626,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerAvatarImage: {
-    width: '100%',
-    height: '100%',
-  },
-  headerAvatarFallback: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#0E6DFD',
-  },
-  headerAvatarLoading: {
-    fontSize: 12,
-    color: '#0E6DFD',
-  },
+  headerAvatarImage: { width: '100%', height: '100%' },
+  headerAvatarFallback: { fontSize: 12, fontWeight: '700', color: '#0E6DFD' },
+  headerAvatarLoading: { fontSize: 12, color: '#0E6DFD' },
   statusBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1958,31 +1644,13 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 3,
   },
-  statusBadge: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 999,
-  },
-  statusBadgeText: {
-    fontSize: 12,
-    fontFamily: FONT_FAMILY.outfitBold,
-  },
-  statusOnline: {
-    backgroundColor: '#ECFDF5',
-  },
-  statusOffline: {
-    backgroundColor: '#F8FAFC',
-  },
-  statusOnlineText: {
-    color: '#047857',
-  },
-  statusOfflineText: {
-    color: '#475569',
-  },
-  statusSwitchWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
+  statusBadge: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 999 },
+  statusBadgeText: { fontSize: 12, fontFamily: FONT_FAMILY.outfitBold },
+  statusOnline: { backgroundColor: '#ECFDF5' },
+  statusOffline: { backgroundColor: '#F8FAFC' },
+  statusOnlineText: { color: '#047857' },
+  statusOfflineText: { color: '#475569' },
+  statusSwitchWrap: { flexDirection: 'row', alignItems: 'center' },
   switchLabel: {
     fontSize: 14,
     fontFamily: FONT_FAMILY.outfitExtraBold,
@@ -2009,9 +1677,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 16,
   },
-  tabButtonActive: {
-    backgroundColor: '#0E6DFD',
-  },
+  tabButtonActive: { backgroundColor: '#0E6DFD' },
   tabButtonText: {
     fontSize: 14,
     fontFamily: FONT_FAMILY.outfitExtraBold,
@@ -2021,12 +1687,8 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontFamily: FONT_FAMILY.bricolageBold,
   },
-  filterRow: {
-    marginBottom: 12,
-  },
-  filterRowContent: {
-    gap: 8,
-  },
+  filterRow: { marginBottom: 12, marginTop: 12 },
+  filterRowContent: { gap: 8 },
   filterChip: {
     paddingVertical: 8,
     paddingHorizontal: 16,
@@ -2035,18 +1697,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E2E8F0',
   },
-  filterChipActive: {
-    backgroundColor: '#0E6DFD',
-    borderColor: '#0E6DFD',
-  },
+  filterChipActive: { backgroundColor: '#0E6DFD', borderColor: '#0E6DFD' },
   filterChipText: {
     fontSize: 13,
     fontFamily: FONT_FAMILY.outfitBold,
     color: '#475569',
   },
-  filterChipTextActive: {
-    color: '#FFFFFF',
-  },
+  filterChipTextActive: { color: '#FFFFFF' },
   ordersTab: {
     backgroundColor: '#FFFFFF',
     borderRadius: 22,
@@ -2092,17 +1749,9 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     elevation: 4,
   },
-  orderCardTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  orderCardHeaderLeft: {
-    flex: 1,
-  },
-  orderCardHeaderRight: {
-    alignItems: 'flex-end',
-    marginLeft: 8,
-  },
+  orderCardTopRow: { flexDirection: 'row', alignItems: 'center' },
+  orderCardHeaderLeft: { flex: 1 },
+  orderCardHeaderRight: { alignItems: 'flex-end', marginLeft: 8 },
   orderIdText: {
     fontSize: 15,
     fontFamily: FONT_FAMILY.bricolageBold,
@@ -2208,10 +1857,7 @@ const styles = StyleSheet.create({
     fontFamily: FONT_FAMILY.outfitExtraBold,
     color: '#64748B',
   },
-  shopHeroInfo: {
-    flex: 1,
-    marginLeft: 12,
-  },
+  shopHeroInfo: { flex: 1, marginLeft: 12 },
   quickMetaRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -2373,12 +2019,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     elevation: 4,
   },
-  statAccent: {
-    width: 38,
-    height: 4,
-    borderRadius: 999,
-    marginBottom: 12,
-  },
+  statAccent: { width: 38, height: 4, borderRadius: 999, marginBottom: 12 },
   statLabel: {
     fontSize: 13,
     fontFamily: FONT_FAMILY.outfitBold,
@@ -2433,11 +2074,7 @@ const styles = StyleSheet.create({
     fontFamily: FONT_FAMILY.bricolageBold,
     marginBottom: 6,
   },
-  starsRow: {
-    flexDirection: 'row',
-    gap: 2,
-    marginBottom: 8,
-  },
+  starsRow: { flexDirection: 'row', gap: 2, marginBottom: 8 },
   xpText: {
     fontSize: 12,
     fontFamily: FONT_FAMILY.outfitBold,
@@ -2451,10 +2088,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#E2E8F0',
     marginBottom: 8,
   },
-  xpBarFill: {
-    height: 6,
-    borderRadius: 3,
-  },
+  xpBarFill: { height: 6, borderRadius: 3 },
   gamifyHint: {
     fontSize: 11,
     fontFamily: FONT_FAMILY.outfitRegular,
@@ -2486,14 +2120,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 4,
   },
-  leaderboardRowHighlight: {
-    backgroundColor: '#EFF6FF',
-  },
-  leaderboardRank: {
-    width: 28,
-    fontSize: 16,
-    textAlign: 'center',
-  },
+  leaderboardRowHighlight: { backgroundColor: '#EFF6FF' },
+  leaderboardRank: { width: 28, fontSize: 16, textAlign: 'center' },
   leaderboardAvatar: {
     width: 36,
     height: 36,
@@ -2501,17 +2129,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#E2E8F0',
     marginHorizontal: 10,
   },
-  leaderboardInfo: {
-    flex: 1,
-  },
+  leaderboardInfo: { flex: 1 },
   leaderboardName: {
     fontSize: 14,
     fontFamily: FONT_FAMILY.outfitBold,
     color: '#121A2B',
   },
-  leaderboardNameHighlight: {
-    color: '#0E6DFD',
-  },
+  leaderboardNameHighlight: { color: '#0E6DFD' },
   leaderboardSub: {
     fontSize: 12,
     fontFamily: FONT_FAMILY.outfitRegular,
@@ -2617,10 +2241,7 @@ const styles = StyleSheet.create({
     fontFamily: FONT_FAMILY.outfitBold,
     color: '#047857',
   },
-  liveLocationRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
+  liveLocationRow: { flexDirection: 'row', alignItems: 'center' },
   liveLocImage: {
     width: 36,
     height: 36,
@@ -2635,10 +2256,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  liveLocInfo: {
-    flex: 1,
-    marginLeft: 10,
-  },
+  liveLocInfo: { flex: 1, marginLeft: 10 },
   liveLocName: {
     fontSize: 14,
     fontFamily: FONT_FAMILY.outfitBold,
@@ -2735,10 +2353,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#F1F5F9',
   },
-  timelineStepH: {
-    alignItems: 'center',
-    gap: 3,
-  },
+  timelineStepH: { alignItems: 'center', gap: 3 },
   timelineLabelH: {
     fontSize: 9,
     fontFamily: FONT_FAMILY.outfitRegular,

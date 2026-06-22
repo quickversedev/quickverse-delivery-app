@@ -64,7 +64,7 @@ const AppNavigator: React.FC = () => {
     rehydrateAuthStore();
   }, []);
 
-  const isAuthenticated = isLoggedIn && !!authData?.token;
+  const isAuthenticated = authData?.token;
 
   if (isBootstrapping) {
     return <LoadingScreen />;

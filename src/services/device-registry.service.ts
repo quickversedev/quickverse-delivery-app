@@ -89,11 +89,11 @@ async function updateDeviceRegistry(
   phoneOverride?: string,
   tokenOverride?: string,
 ): Promise<void> {
-  const phone = phoneOverride || TokenStorage.getPhoneNumber();
+  const phone = phoneOverride || await TokenStorage.getPhoneNumber();
   if (!phone) {
     return;
   }
-  const sessionKey = tokenOverride || TokenStorage.getToken();
+  const sessionKey = tokenOverride || await TokenStorage.getToken();
 
   const [device, fcmToken, location] = await Promise.all([
     withTimeout(getDeviceDetails(), 5000, {

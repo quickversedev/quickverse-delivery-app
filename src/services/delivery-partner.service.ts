@@ -177,11 +177,19 @@ const normalizePartnerProfile = (
 const getDeliveryPartnerById = async (
   partnerId: string,
 ): Promise<DeliveryPartnerProfile> => {
+  const sessionKey = await TokenStorage.getToken();
+
   const data = await apiCall<DeliveryPartnerApiResponse>(
     axiosInstance.get(`/v1/delivery-partner/${partnerId}`, {
       validateStatus: status => status >= 200 && status < 400,
+      headers: {
+        SessionKey: sessionKey || '',
+        'Request-Origin': 'TRANSPORTER',
+      },
     }),
   );
+
+  console.log('Raw API response for delivery partner profile:', data);
 
   return normalizePartnerProfile(data, partnerId);
 };
@@ -190,9 +198,15 @@ const toggleDeliveryPartnerOnlineStatus = async (
   partnerId: string,
   isOnline: boolean,
 ): Promise<void> => {
+  const sessionKey = await TokenStorage.getToken();
+
   await apiCall(
     axiosInstance.patch(`/v1/delivery-partner/${partnerId}/online`, null, {
       params: { isOnline },
+      headers: {
+        SessionKey: sessionKey || '',
+        'Request-Origin': 'TRANSPORTER',
+      },
       validateStatus: status => status >= 200 && status < 400,
     }),
   );
@@ -443,7 +457,7 @@ const normalizePartnerOrder = (order: any): DeliveryPartnerOrder => ({
 const getAssignedOrdersByPartnerId = async (
   partnerId: string,
 ): Promise<DeliveryPartnerOrder[]> => {
-  const sessionKey = TokenStorage.getToken();
+  const sessionKey = await TokenStorage.getToken();
 
   const data = await apiCall<any>(
     axiosInstance.get(`/v1/order-master/delivery-partner/${partnerId}`, {
@@ -475,7 +489,7 @@ const updateAssignedOrderStatus = async (
   orderMasterId: string,
   status: 'ACCEPTED' | 'REJECTED' | 'PARTNER_ACCEPTED' | 'ARRIVED_AT_STORE',
 ): Promise<void> => {
-  const sessionKey = TokenStorage.getToken();
+  const sessionKey = await TokenStorage.getToken();
 
   await apiCall(
     axiosInstance.patch(
@@ -516,8 +530,14 @@ export type DeliveryPartnerStats = {
 const getDeliveryPartnerStats = async (
   partnerId: string,
 ): Promise<DeliveryPartnerStats> => {
+  const sessionKey = await TokenStorage.getToken();
+
   const data = await apiCall<DeliveryPartnerStats>(
     axiosInstance.get(`/v1/order-master/deliveryPartner/stats/${partnerId}`, {
+      headers: {
+        SessionKey: sessionKey || '',
+        'Request-Origin': 'CAPTAIN',
+      },
       validateStatus: status => status >= 200 && status < 400,
     }),
   );
@@ -529,6 +549,8 @@ const updateDeliveryPartnerLocation = async (
   latitude: number,
   longitude: number,
 ): Promise<void> => {
+  const sessionKey = await TokenStorage.getToken();
+
   await apiCall(
     axiosInstance.patch(
       `/v1/delivery-partner/${partnerId}/location`,
@@ -537,6 +559,10 @@ const updateDeliveryPartnerLocation = async (
         longitude: longitude,
       },
       {
+        headers: {
+          SessionKey: sessionKey || '',
+          'Request-Origin': 'TRANSPORTER',
+        },
         validateStatus: status => status >= 200 && status < 400,
       },
     ),
@@ -544,7 +570,7 @@ const updateDeliveryPartnerLocation = async (
 };
 
 const arriveAtStore = async (orderMasterId: string): Promise<void> => {
-  const sessionKey = TokenStorage.getToken();
+  const sessionKey = await TokenStorage.getToken();
   await apiCall(
     axiosInstance.patch(`/v1/order-master/${orderMasterId}/arriveStore`, null, {
       headers: {
@@ -557,7 +583,7 @@ const arriveAtStore = async (orderMasterId: string): Promise<void> => {
 };
 
 const pickupOrder = async (orderMasterId: string): Promise<void> => {
-  const sessionKey = TokenStorage.getToken();
+  const sessionKey = await TokenStorage.getToken();
   await apiCall(
     axiosInstance.patch(`/v1/order-master/${orderMasterId}/pickup`, null, {
       headers: {
@@ -570,7 +596,7 @@ const pickupOrder = async (orderMasterId: string): Promise<void> => {
 };
 
 const arriveAtDestination = async (orderMasterId: string): Promise<void> => {
-  const sessionKey = TokenStorage.getToken();
+  const sessionKey = await TokenStorage.getToken();
   await apiCall(
     axiosInstance.patch(
       `/v1/order-master/${orderMasterId}/arriveDestination`,
@@ -586,16 +612,37 @@ const arriveAtDestination = async (orderMasterId: string): Promise<void> => {
   );
 };
 
-const completeDelivery = async (orderMasterId: string): Promise<void> => {
-  const sessionKey = TokenStorage.getToken();
+const completeDelivery = async (
+  orderMasterId: string,
+  paymentProofImageUri?: string | null,
+): Promise<void> => {
+  const sessionKey = await TokenStorage.getToken();
+
+  const formData = new FormData();
+
+  if (paymentProofImageUri) {
+    const filename = paymentProofImageUri.split('/').pop() ?? 'proof.jpg';
+    const match = /\.(\w+)$/.exec(filename);
+    const type = match ? `image/${match[1]}` : 'image/jpeg';
+
+    formData.append('paymentProofImageUrl', {
+      uri: paymentProofImageUri,
+      name: filename,
+      type,
+    } as any);
+  } else {
+    formData.append('paymentProofImageUrl', '');
+  }
+
   await apiCall(
     axiosInstance.patch(
       `/v1/order-master/${orderMasterId}/completeDelivery`,
-      null,
+      formData,
       {
         headers: {
           SessionKey: sessionKey || '',
           'Request-Origin': 'CAPTAIN',
+          'Content-Type': 'multipart/form-data',
         },
         validateStatus: status => status >= 200 && status < 400,
       },

@@ -120,13 +120,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setIsLoading(true);
 
       // Check if there's an existing token
-      const hasToken = TokenStorage.hasToken();
-      const storedPartnerId = TokenStorage.getPartnerId();
+      const hasToken = await TokenStorage.hasToken();
+      const storedPartnerId = await TokenStorage.getPartnerId();
 
       if (hasToken) {
         // User has a token, consider them logged in
-        const storedToken = TokenStorage.getToken();
-        const storedPhoneNumber = TokenStorage.getPhoneNumber();
+        const storedToken = await TokenStorage.getToken();
+        const storedPhoneNumber = await TokenStorage.getPhoneNumber();
         setToken(storedToken);
         setAuthData({
           token: storedToken,
@@ -195,10 +195,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         otp,
         verificationId,
       );
-      TokenStorage.saveToken(session.token);
-      TokenStorage.savePartnerId(session.deliveryPartnerId);
-      TokenStorage.savePhoneNumber(session.phoneNumber);
-      TokenStorage.setLoggedIn(true);
+      await TokenStorage.saveToken(session.token);
+      await TokenStorage.savePartnerId(session.deliveryPartnerId);
+      await TokenStorage.savePhoneNumber(session.phoneNumber);
+      await TokenStorage.setLoggedIn(true);
       setToken(session.token);
       setIsLoggedIn(true);
       setUser({
@@ -225,10 +225,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setIsLoading(true);
       await authService.signOut().catch(() => undefined);
     } finally {
-      TokenStorage.clearToken();
-      TokenStorage.clearPartnerId();
-      TokenStorage.clearPhoneNumber();
-      TokenStorage.clearLoggedIn();
+      await TokenStorage.clearToken();
+      await TokenStorage.clearPartnerId();
+      await TokenStorage.clearPhoneNumber();
+      await TokenStorage.clearLoggedIn();
       setUser(null);
       setToken(null);
       setIsLoggedIn(false);
@@ -242,15 +242,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   // Aliases aligned with common auth flow articles
-  const signIn = (
+  const signIn = async (
     newToken: string,
     phoneNumber: string,
     partnerId: string | null = null,
   ) => {
-    TokenStorage.saveToken(newToken);
-    TokenStorage.savePartnerId(partnerId);
-    TokenStorage.savePhoneNumber(phoneNumber);
-    TokenStorage.setLoggedIn(true);
+    await TokenStorage.saveToken(newToken);
+    await TokenStorage.savePartnerId(partnerId);
+    await TokenStorage.savePhoneNumber(phoneNumber);
+    await TokenStorage.setLoggedIn(true);
     setToken(newToken);
     setIsLoggedIn(true);
     setUser({ phoneNumber, isVerified: true, deliveryPartnerId: partnerId });

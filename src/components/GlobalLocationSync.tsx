@@ -4,10 +4,13 @@ import useAuthStore from '../hooks/useAuthStore';
 import deliveryPartnerService from '../services/delivery-partner.service';
 import { getBestEffortCurrentLocation } from '../utils/location';
 
-const LOCATION_SYNC_INTERVAL_MS = 2 * 60 * 1000;
+const LOCATION_SYNC_INTERVAL_MS = 1 * 60 * 1000;
 
 const GlobalLocationSync: React.FC = () => {
-  const { authData, isLoggedIn, isBootstrapping } = useAuthStore();
+  const partnerId = useAuthStore(state => state.authData.partnerId);
+  const isLoggedIn = useAuthStore(state => state.isLoggedIn);
+  const isBootstrapping = useAuthStore(state => state.isBootstrapping);
+
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isSyncInProgressRef = useRef(false);
   const appStateRef = useRef<AppStateStatus>(AppState.currentState);
@@ -16,54 +19,77 @@ const GlobalLocationSync: React.FC = () => {
     const subscription = AppState.addEventListener('change', nextState => {
       appStateRef.current = nextState;
     });
-
     return () => subscription.remove();
   }, []);
 
   const syncLocation = useCallback(async () => {
-    if (
-      !authData.partnerId ||
-      isSyncInProgressRef.current ||
-      appStateRef.current !== 'active'
-    ) {
+    if (!partnerId) {
+      console.log('[LocationSync] Skipped — no partnerId');
+      return;
+    }
+
+    if (isSyncInProgressRef.current) {
+      console.log('[LocationSync] Skipped — sync already in progress');
+      return;
+    }
+
+    if (appStateRef.current !== 'active') {
+      console.log(
+        '[LocationSync] Skipped — app not active:',
+        appStateRef.current,
+      );
       return;
     }
 
     try {
       isSyncInProgressRef.current = true;
+      console.log('[LocationSync] Fetching location for partnerId:', partnerId);
 
       const coordinate = await getBestEffortCurrentLocation();
+      console.log('[LocationSync] Location obtained:', coordinate);
 
-      await deliveryPartnerService.updateDeliveryPartnerLocation(
-        authData.partnerId,
-        coordinate.latitude,
-        coordinate.longitude,
-      );
+      const response =
+        await deliveryPartnerService.updateDeliveryPartnerLocation(
+          partnerId,
+          coordinate.latitude,
+          coordinate.longitude,
+        );
+      console.log('[LocationSync] Sync successful:', response);
     } catch (error) {
-      console.error('Global location sync failed', error);
+      console.error('[LocationSync] Sync failed:', error);
     } finally {
       isSyncInProgressRef.current = false;
     }
-  }, [authData.partnerId]);
+  }, [partnerId]);
 
   useEffect(() => {
     const clearSyncInterval = () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
+        console.log('[LocationSync] Interval cleared');
       }
     };
 
-    if (isBootstrapping || !isLoggedIn || !authData.partnerId) {
+    if (isBootstrapping || !isLoggedIn || !partnerId) {
+      console.log('[LocationSync] Conditions not met — clearing interval', {
+        isBootstrapping,
+        isLoggedIn,
+        partnerId,
+      });
       clearSyncInterval();
       return;
     }
 
+    console.log(
+      '[LocationSync] Starting sync interval for partnerId:',
+      partnerId,
+    );
     syncLocation();
     intervalRef.current = setInterval(syncLocation, LOCATION_SYNC_INTERVAL_MS);
 
     return clearSyncInterval;
-  }, [authData.partnerId, isBootstrapping, isLoggedIn, syncLocation]);
+  }, [partnerId, isBootstrapping, isLoggedIn, syncLocation]);
 
   return null;
 };
