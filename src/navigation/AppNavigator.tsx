@@ -1,6 +1,15 @@
 import React, { useEffect } from 'react';
+import { StyleSheet } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import {
+  Home,
+  Package,
+  Wallet,
+  Gift,
+  User,
+} from 'lucide-react-native';
 import {
   LoginScreen,
   OTPScreen,
@@ -8,57 +17,101 @@ import {
   OrderWebViewScreen,
   ProfileScreen,
   HomeScreen,
+  EarningsScreen,
+  OrdersScreen,
+  RewardsScreen,
 } from '../screens';
 import LoadingScreen from '../components/LoadingScreen';
 import useAuthStore from '../hooks/useAuthStore';
 import { rehydrateAuthStore } from '../store/authStore';
 import { DeliveryPartnerOrder } from '../services/delivery-partner.service';
+import { FONT_FAMILY } from '../theme/typography';
 
 type AuthStackParamList = {
   Login: undefined;
   OTP: undefined;
 };
 
-type AppStackParamList = {
-  Home: undefined;
-  Profile: undefined;
+export type MainTabParamList = {
+  HomeTab: undefined;
+  OrdersTab: undefined;
+  EarningsTab: undefined;
+  RewardsTab: undefined;
+  ProfileTab: undefined;
+};
+
+export type RootStackParamList = {
+  MainTabs: undefined;
   OrderWebView: { url: string; title?: string };
   OrderDelivery: { order: DeliveryPartnerOrder };
 };
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
-const AppStack = createNativeStackNavigator<AppStackParamList>();
+const RootStack = createNativeStackNavigator<RootStackParamList>();
+const Tab = createBottomTabNavigator<MainTabParamList>();
 
-const LoginNavigator: React.FC = () => {
-  return (
-    <AuthStack.Navigator
-      initialRouteName="Login"
-      screenOptions={{ headerShown: false }}
-    >
-      <AuthStack.Screen name="Login" component={LoginScreen} />
-      <AuthStack.Screen name="OTP" component={OTPScreen} />
-    </AuthStack.Navigator>
-  );
+const TAB_ICONS = {
+  HomeTab: Home,
+  OrdersTab: Package,
+  EarningsTab: Wallet,
+  RewardsTab: Gift,
+  ProfileTab: User,
+} as const;
+
+const TAB_LABELS: Record<keyof MainTabParamList, string> = {
+  HomeTab: 'Home',
+  OrdersTab: 'Orders',
+  EarningsTab: 'Earnings',
+  RewardsTab: 'Rewards',
+  ProfileTab: 'Profile',
 };
 
-const MainAppNavigator: React.FC = () => {
-  return (
-    <AppStack.Navigator
-      initialRouteName="Home"
-      screenOptions={{
-        headerShown: false,
-      }}
-    >
-      <AppStack.Screen name="Home" component={HomeScreen} />
-      <AppStack.Screen name="Profile" component={ProfileScreen} />
-      <AppStack.Screen name="OrderWebView" component={OrderWebViewScreen} />
-      <AppStack.Screen name="OrderDelivery" component={OrderDeliveryScreen} />
-    </AppStack.Navigator>
-  );
+const LoginNavigator: React.FC = () => (
+  <AuthStack.Navigator
+    initialRouteName="Login"
+    screenOptions={{ headerShown: false }}
+  >
+    <AuthStack.Screen name="Login" component={LoginScreen} />
+    <AuthStack.Screen name="OTP" component={OTPScreen} />
+  </AuthStack.Navigator>
+);
+
+const renderTabIcon = (route: { name: keyof MainTabParamList }, color: string, size: number) => {
+  const Icon = TAB_ICONS[route.name];
+  return <Icon size={size - 2} color={color} strokeWidth={2} />;
 };
+
+const MainTabNavigator: React.FC = () => (
+  <Tab.Navigator
+    screenOptions={({ route }) => ({
+      headerShown: false,
+      // eslint-disable-next-line react/no-unstable-nested-components
+      tabBarIcon: ({ color, size }) => renderTabIcon(route, color, size),
+      tabBarLabel: TAB_LABELS[route.name],
+      tabBarActiveTintColor: '#0E6DFD',
+      tabBarInactiveTintColor: '#94A3B8',
+      tabBarLabelStyle: styles.tabLabel,
+      tabBarStyle: styles.tabBar,
+    })}
+  >
+    <Tab.Screen name="HomeTab" component={HomeScreen} />
+    <Tab.Screen name="OrdersTab" component={OrdersScreen} />
+    <Tab.Screen name="EarningsTab" component={EarningsScreen} />
+    <Tab.Screen name="RewardsTab" component={RewardsScreen} />
+    <Tab.Screen name="ProfileTab" component={ProfileScreen} />
+  </Tab.Navigator>
+);
+
+const MainAppNavigator: React.FC = () => (
+  <RootStack.Navigator screenOptions={{ headerShown: false }}>
+    <RootStack.Screen name="MainTabs" component={MainTabNavigator} />
+    <RootStack.Screen name="OrderWebView" component={OrderWebViewScreen} />
+    <RootStack.Screen name="OrderDelivery" component={OrderDeliveryScreen} />
+  </RootStack.Navigator>
+);
 
 const AppNavigator: React.FC = () => {
-  const { authData, isBootstrapping, isLoggedIn } = useAuthStore();
+  const { authData, isBootstrapping } = useAuthStore();
 
   useEffect(() => {
     rehydrateAuthStore();
@@ -76,5 +129,20 @@ const AppNavigator: React.FC = () => {
     </NavigationContainer>
   );
 };
+
+const styles = StyleSheet.create({
+  tabBar: {
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+    height: 60,
+    paddingBottom: 6,
+    paddingTop: 6,
+  },
+  tabLabel: {
+    fontSize: 11,
+    fontFamily: FONT_FAMILY.outfitBold,
+  },
+});
 
 export default AppNavigator;

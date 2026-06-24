@@ -39,9 +39,8 @@ import { ChevronDown, ChevronUp } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle as SvgCircle } from 'react-native-svg';
 
-type AppStackParamList = {
-  Home: undefined;
-  Profile: undefined;
+type RootStackParamList = {
+  MainTabs: undefined;
   OrderWebView: { url: string; title?: string };
   OrderDelivery: { order: DeliveryPartnerOrder };
 };
@@ -60,7 +59,7 @@ type LiveOrderCardProps = {
 
 const LiveOrderCard: React.FC<LiveOrderCardProps> = ({ order }) => {
   const navigation =
-    useNavigation<NativeStackNavigationProp<AppStackParamList>>();
+    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { getPricingValues } = usePricingStore();
 
   const getSecondsLeft = () => {
@@ -354,7 +353,7 @@ const liveTimerStyles = StyleSheet.create({
 const HomeScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const navigation =
-    useNavigation<NativeStackNavigationProp<AppStackParamList>>();
+    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { partnerProfile, isPartnerLoading, logout, authData } = useAuthStore();
 
   const [isOnline, setIsOnline] = useState(false);
@@ -1149,7 +1148,7 @@ const HomeScreen: React.FC = () => {
           </View>
           <View style={styles.headerActions}>
             <TouchableOpacity
-              onPress={() => navigation.navigate('Profile')}
+              onPress={() => (navigation.navigate as any)('ProfileTab')}
               style={styles.headerAvatarWrap}
               activeOpacity={0.8}
             >

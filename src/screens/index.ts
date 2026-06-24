@@ -4,6 +4,9 @@ import OrderDeliveryScreen from './OrderDeliveryScreen';
 import OrderWebViewScreen from './OrderWebViewScreen';
 import OTPScreen from './OTPScreen';
 import ProfileScreen from './ProfileScreen';
+import EarningsScreen from './EarningsScreen';
+import OrdersScreen from './OrdersScreen';
+import RewardsScreen from './RewardsScreen';
 
 export {
   HomeScreen,
@@ -12,4 +15,7 @@ export {
   OrderWebViewScreen,
   OTPScreen,
   ProfileScreen,
+  EarningsScreen,
+  OrdersScreen,
+  RewardsScreen,
 };
