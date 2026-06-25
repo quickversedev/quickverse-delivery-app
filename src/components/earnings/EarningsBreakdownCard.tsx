@@ -10,8 +10,7 @@ const Row: React.FC<{ label: string; sub?: string; value: string; bold?: boolean
 }) => (
   <View style={styles.row}>
     <View style={styles.rowLeft}>
-      <Text style={[styles.rowLabel, bold && styles.rowLabelBold]}>{label}</Text>
-      {sub ? <Text style={styles.rowSub}>{sub}</Text> : null}
+      <Text style={[styles.rowLabel, bold && styles.rowLabelBold]} numberOfLines={1}>{label}{sub ? ` ${sub}` : ''}</Text>
     </View>
     <Text style={[styles.rowValue, bold && styles.rowValueBold]}>{value}</Text>
   </View>
@@ -56,30 +55,24 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   rowLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
     flexShrink: 1,
+    marginRight: 8,
   },
   rowLabel: {
-    fontSize: 13,
+    fontSize: 12,
     fontFamily: FONT_FAMILY.outfitRegular,
     color: '#334155',
   },
   rowLabelBold: {
     fontFamily: FONT_FAMILY.outfitBold,
     color: '#0F172A',
-    fontSize: 14,
-  },
-  rowSub: {
-    fontSize: 12,
-    fontFamily: FONT_FAMILY.outfitRegular,
-    color: '#94A3B8',
+    fontSize: 13,
   },
   rowValue: {
-    fontSize: 14,
+    fontSize: 13,
     fontFamily: FONT_FAMILY.outfitBold,
     color: '#0F172A',
+    flexShrink: 0,
   },
   rowValueBold: {
     fontSize: 15,

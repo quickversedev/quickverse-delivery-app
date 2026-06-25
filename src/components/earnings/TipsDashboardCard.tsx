@@ -1,6 +1,5 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { Star } from 'lucide-react-native';
 import { FONT_FAMILY } from '../../theme/typography';
 import type { TipsDashboard } from '../../types/earnings';
 
@@ -14,12 +13,12 @@ const TipsDashboardCard: React.FC<Props> = ({ data }) => (
       <View style={styles.tipItem}>
         <View style={[styles.dot, { backgroundColor: '#0E6DFD' }]} />
         <Text style={styles.tipLabel}>Cash Tips</Text>
-        <Text style={styles.tipValue}>₹{data.cashTips}</Text>
+        <Text style={styles.tipValue} numberOfLines={1}>₹{data.cashTips}</Text>
       </View>
       <View style={styles.tipItem}>
         <View style={[styles.dot, { backgroundColor: '#8B5CF6' }]} />
         <Text style={styles.tipLabel}>UPI Tips</Text>
-        <Text style={styles.tipValue}>₹{data.upiTips}</Text>
+        <Text style={styles.tipValue} numberOfLines={1}>₹{data.upiTips}</Text>
       </View>
     </View>
 
@@ -37,9 +36,7 @@ const TipsDashboardCard: React.FC<Props> = ({ data }) => (
               {data.topTipper.name.charAt(0)}
             </Text>
           </View>
-          <Text style={styles.topTipperName}>{data.topTipper.name}</Text>
-          <Star size={14} color="#F59E0B" fill="#F59E0B" />
-          <Text style={styles.topTipperAmount}>₹{data.topTipper.amount}</Text>
+          <Text style={styles.topTipperName} numberOfLines={1}>{data.topTipper.name}</Text>
         </View>
       </View>
     )}
@@ -66,13 +63,14 @@ const styles = StyleSheet.create({
   },
   tipsRow: {
     flexDirection: 'row',
-    gap: 24,
+    flexWrap: 'wrap',
+    gap: 8,
     marginBottom: 14,
   },
   tipItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
   },
   dot: {
     width: 8,
@@ -80,12 +78,12 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   tipLabel: {
-    fontSize: 12,
+    fontSize: 11,
     fontFamily: FONT_FAMILY.outfitRegular,
     color: '#64748B',
   },
   tipValue: {
-    fontSize: 13,
+    fontSize: 12,
     fontFamily: FONT_FAMILY.outfitBold,
     color: '#0F172A',
   },
@@ -110,21 +108,22 @@ const styles = StyleSheet.create({
   },
   topTipperRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: '#F8FAFC',
     borderRadius: 12,
-    padding: 12,
+    padding: 10,
+    gap: 6,
   },
   topTipperLabel: {
-    fontSize: 12,
+    fontSize: 11,
     fontFamily: FONT_FAMILY.outfitRegular,
     color: '#64748B',
   },
   topTipperInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
+    flexShrink: 1,
   },
   avatar: {
     width: 24,
@@ -143,11 +142,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: FONT_FAMILY.outfitBold,
     color: '#0F172A',
-  },
-  topTipperAmount: {
-    fontSize: 13,
-    fontFamily: FONT_FAMILY.bricolageBold,
-    color: '#0F172A',
+    flexShrink: 1,
   },
 });
 
