@@ -22,28 +22,23 @@ For iOS, install CocoaPods first: `bundle install && bundle exec pod install`.
 
 ## Architecture
 
-### Dual Auth Systems
+### Auth & State
 
-The app has two parallel auth implementations that coexist:
+The app uses a **Zustand store** (`src/store/authStore.ts`) for auth state, persisted to AsyncStorage under key `auth-store`. The `useAuthStore` hook (`src/hooks/useAuthStore.ts`) is a re-export of this store. A legacy Context-based auth (`src/contexts/AuthContext.tsx`) exists but is **not mounted** in `App.tsx`.
 
-1. **`src/contexts/AuthContext.tsx`** — React Context + `useState` (provides `useAuth` hook via `AuthProvider`)
-2. **`src/store/authStore.ts`** — Zustand store with async persistence to AsyncStorage (provides `useAuthStore` hook)
+On app launch, `rehydrateAuthStore()` restores state from AsyncStorage. It has a fallback path that migrates from individual `TokenStorage` keys (legacy) into the unified `auth-store` key.
 
-The active navigation (`AppNavigator.tsx`) uses the **Zustand store** (`useAuthStore`). The Context-based `AuthProvider` is not currently mounted in `App.tsx`. Both maintain the same shape of auth state and call the same underlying services.
-
-### State & Storage Layers
-
-- **MMKV** (`src/utils/storage.ts`) — synchronous token/session storage via `TokenStorage` and `PartnerStatusStorage`. Used as the fast auth check layer with in-memory fallback.
-- **AsyncStorage** — used by the Zustand store (`authStore.ts`) for persisting full auth state (user, profile, login status) across app restarts.
-- Both layers are written to during login/logout and must stay in sync.
+**Storage**: `TokenStorage` and `PartnerStatusStorage` (both in `src/utils/storage.ts`) use **AsyncStorage** for individual keys (`@AuthToken`, `@PartnerId`, `@PhoneNumber`, `@IsLoggedIn`, `@PartnerActive`). Despite `react-native-mmkv` being a dependency, it is not currently used. Both the Zustand-persisted blob and the individual TokenStorage keys are written during login/logout and must stay in sync.
 
 ### Navigation
 
-React Navigation v7 with native stack. Two stack navigators switch based on auth state:
-- **AuthStack**: Login -> OTP
-- **AppStack**: Home -> Profile
+React Navigation v7 with three layers:
 
-Controlled by `isLoggedIn && !!authData?.token` in `AppNavigator.tsx`. Auth state is rehydrated on mount via `rehydrateAuthStore()`.
+1. **AuthStack** (native stack): Login -> OTP
+2. **MainTabNavigator** (bottom tabs): HomeTab, OrdersTab, EarningsTab, RewardsTab, ProfileTab
+3. **RootStack** (native stack, wraps tabs): MainTabs, OrderWebView, OrderDelivery
+
+Auth gate in `AppNavigator.tsx` switches between AuthStack and RootStack based on `authData?.token`. Shows `LoadingScreen` while `isBootstrapping` is true.
 
 ### API Layer
 
@@ -53,12 +48,28 @@ Controlled by `isLoggedIn && !!authData?.token` in `AppNavigator.tsx`. Auth stat
 
 ### Services
 
-- **`auth.service.ts`** — OTP-based auth: `sendOtp` (4-digit OTP, 10-digit phone), `verifyOtp`, `signUp`, `signOut`. Uses Basic Auth header for unauthenticated endpoints.
-- **`delivery-partner.service.ts`** — partner profile, online status toggle, assigned orders (fetch/accept/reject), location updates. Some endpoints use `SessionKey` header instead of `Authorization`.
+- **`auth.service.ts`** — OTP-based auth: `sendOtp` (`/quickVerse/v1/requestOtp`), `verifyOtp` (`/quickVerse/v1/login`), `signUp`, `signOut`. Unauthenticated endpoints use a hardcoded Basic Auth header.
+- **`delivery-partner.service.ts`** — partner profile, online status toggle, assigned orders, location updates, and the full delivery workflow (`arriveAtStore`, `pickupOrder`, `arriveAtDestination`, `completeDelivery`). Uses `SessionKey` header (not `Authorization`) and `Request-Origin: CAPTAIN` for order endpoints.
+- **`earnings.service.ts`** — currently returns **hardcoded mock data** (backend not ready).
+- **`pricing.service.ts`** — fetches pricing config; consumed by `pricingStore` (Zustand) with hardcoded defaults for FOOD and GROCERY service types.
+- **`device-registry.service.ts`** — registers device info + FCM token on login via `/quickVerse/v1/updateDeviceRegistry`.
+- **`websocket.service.ts`** — STOMP over WebSocket for real-time order assignment events. Subscribes to `/topic/deliveryPartner/{partnerId}`. Auto-reconnects with 5s delay.
+
+### Order Delivery Workflow
+
+`OrderDeliveryScreen` implements a multi-stage delivery flow driven by order status:
+
+`ACCEPTED/PARTNER_ASSIGNED` -> `ARRIVED_AT_STORE` -> `PICKED_UP` -> `ARRIVED_AT_DESTINATION` -> `DELIVERED`
+
+Each stage maps to an API action in `delivery-partner.service.ts`. The `completeDelivery` step supports optional payment proof image upload via `multipart/form-data`.
+
+### Push Notifications
+
+Firebase Cloud Messaging (`@react-native-firebase/messaging`) for receiving push messages. `@notifee/react-native` for displaying local notifications in the foreground. Permission is requested once after first login. `NotificationSetup` component (renders `null`) handles all FCM listeners and is mounted in `App.tsx`.
 
 ### Background Location Sync
 
-`GlobalLocationSync` component (rendered in `App.tsx`, renders `null`) syncs the delivery partner's GPS coordinates to the server every 4 minutes while the app is in the foreground and the partner is logged in.
+`GlobalLocationSync` component (renders `null`, mounted in `App.tsx`) syncs GPS coordinates to the server every **1 minute** while the app is in the foreground and the partner is logged in.
 
 ### Fonts
 
@@ -66,10 +77,14 @@ Custom fonts: BricolageGrotesque (Regular/Medium/Bold) and Outfit (Regular/Bold/
 
 ## Key Dependencies
 
-- **zustand** for state management
-- **react-native-mmkv** for synchronous key-value storage
-- **@react-native-async-storage/async-storage** for async persistence
+- **zustand** for state management (auth store, pricing store)
+- **@react-native-async-storage/async-storage** for all persistent storage
 - **axios** for HTTP
+- **@stomp/stompjs** for WebSocket (real-time order events)
+- **@react-native-firebase/messaging** + **@notifee/react-native** for push notifications
+- **react-native-maps** for map display in delivery screen
+- **react-native-image-picker** for payment proof camera/gallery
+- **react-native-device-info** for device registry
 - **lucide-react-native** for icons (requires react-native-svg)
 - **react-native-otp-entry** for OTP input
 - **@react-native-community/geolocation** for GPS
