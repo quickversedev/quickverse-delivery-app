@@ -5,9 +5,8 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import {
   Home,
-  Package,
+  LayoutDashboard,
   Wallet,
-  Gift,
   User,
 } from 'lucide-react-native';
 import {
@@ -17,9 +16,8 @@ import {
   OrderWebViewScreen,
   ProfileScreen,
   HomeScreen,
+  NewHomeScreen,
   EarningsScreen,
-  OrdersScreen,
-  RewardsScreen,
 } from '../screens';
 import LoadingScreen from '../components/LoadingScreen';
 import useAuthStore from '../hooks/useAuthStore';
@@ -33,10 +31,9 @@ type AuthStackParamList = {
 };
 
 export type MainTabParamList = {
+  NewHomeTab: undefined;
   HomeTab: undefined;
-  OrdersTab: undefined;
   EarningsTab: undefined;
-  RewardsTab: undefined;
   ProfileTab: undefined;
 };
 
@@ -51,18 +48,16 @@ const RootStack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
 const TAB_ICONS = {
+  NewHomeTab: LayoutDashboard,
   HomeTab: Home,
-  OrdersTab: Package,
   EarningsTab: Wallet,
-  RewardsTab: Gift,
   ProfileTab: User,
 } as const;
 
 const TAB_LABELS: Record<keyof MainTabParamList, string> = {
+  NewHomeTab: 'Dashboard',
   HomeTab: 'Home',
-  OrdersTab: 'Orders',
   EarningsTab: 'Earnings',
-  RewardsTab: 'Rewards',
   ProfileTab: 'Profile',
 };
 
@@ -95,9 +90,8 @@ const MainTabNavigator: React.FC = () => (
     })}
   >
     <Tab.Screen name="HomeTab" component={HomeScreen} />
-    <Tab.Screen name="OrdersTab" component={OrdersScreen} />
+    <Tab.Screen name="NewHomeTab" component={NewHomeScreen} />
     <Tab.Screen name="EarningsTab" component={EarningsScreen} />
-    <Tab.Screen name="RewardsTab" component={RewardsScreen} />
     <Tab.Screen name="ProfileTab" component={ProfileScreen} />
   </Tab.Navigator>
 );
@@ -135,8 +129,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
     borderTopColor: '#E2E8F0',
-    height: 60,
-    paddingBottom: 6,
     paddingTop: 6,
   },
   tabLabel: {
