@@ -11,33 +11,39 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FONT_FAMILY } from '../theme/typography';
 import type { EarningsData, EarningsPeriod } from '../types/earnings';
 import earningsService from '../services/earnings.service';
+import useAuthStore from '../hooks/useAuthStore';
 import PeriodFilterTabs from '../components/earnings/PeriodFilterTabs';
 import EarningsSummaryCard from '../components/earnings/EarningsSummaryCard';
 import WeeklyBarChart from '../components/earnings/WeeklyBarChart';
-import EarningsBreakdownCard from '../components/earnings/EarningsBreakdownCard';
-import TipsDashboardCard from '../components/earnings/TipsDashboardCard';
-import CashReconciliationCard from '../components/earnings/CashReconciliationCard';
+// import EarningsBreakdownCard from '../components/earnings/EarningsBreakdownCard';
+// import TipsDashboardCard from '../components/earnings/TipsDashboardCard';
+// import CashReconciliationCard from '../components/earnings/CashReconciliationCard';
 import TransactionHistory from '../components/earnings/TransactionHistory';
 
 const EarningsScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
+  const { authData } = useAuthStore();
+  const partnerId = authData?.partnerId;
   const [period, setPeriod] = useState<EarningsPeriod>('today');
   const [data, setData] = useState<EarningsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const fetchData = useCallback(async (silent = false) => {
+    if (!partnerId) { return; }
+    console.log(`[EarningsScreen] fetchData called — period=${period}, partnerId=${partnerId}`);
     if (!silent) { setLoading(true); }
     try {
-      const result = await earningsService.getEarningsData(period);
+      const result = await earningsService.getEarningsData(partnerId, period);
+      console.log('[EarningsScreen] Mapped result:', JSON.stringify(result, null, 2));
       setData(result);
-    } catch {
-      // TODO: error handling when real API is wired
+    } catch (err) {
+      console.warn('[EarningsScreen] Failed to fetch earnings data:', err);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [period]);
+  }, [period, partnerId]);
 
   useEffect(() => {
     fetchData();
@@ -75,7 +81,7 @@ const EarningsScreen: React.FC = () => {
         <View style={styles.spacer} />
         <WeeklyBarChart data={data.last7Days} />
 
-        <View style={styles.spacer} />
+        {/* <View style={styles.spacer} />
         <View style={styles.sideBySide}>
           <View style={styles.halfCard}>
             <EarningsBreakdownCard data={data.breakdown} />
@@ -83,10 +89,10 @@ const EarningsScreen: React.FC = () => {
           <View style={styles.halfCard}>
             <TipsDashboardCard data={data.tips} />
           </View>
-        </View>
+        </View> */}
 
-        <View style={styles.spacer} />
-        <CashReconciliationCard data={data.cashReconciliation} />
+        {/* <View style={styles.spacer} />
+        <CashReconciliationCard data={data.cashReconciliation} /> */}
 
         <View style={styles.spacer} />
         <TransactionHistory data={data.transactions} />

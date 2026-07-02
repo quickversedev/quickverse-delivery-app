@@ -1,98 +1,204 @@
+import axiosInstance, { apiCall } from './axios.config';
+import { TokenStorage } from '../utils/storage';
 import type {
   EarningsData,
   EarningsPeriod,
+  TransactionType,
 } from '../types/earnings';
 
-const MOCK_EARNINGS: EarningsData = {
-  summary: {
-    totalEarnings: 850,
-    percentageChange: 12,
-    comparisonLabel: 'vs yesterday',
-    ordersDone: 8,
-    basePay: 400,
-    orderEarnings: 270,
-    bonus: 50,
-    tips: 130,
-  },
-  last7Days: [
-    { day: 'Mon', amount: 620, isToday: false },
-    { day: 'Tue', amount: 810, isToday: false },
-    { day: 'Wed', amount: 760, isToday: false },
-    { day: 'Thu', amount: 930, isToday: false },
-    { day: 'Fri', amount: 580, isToday: false },
-    { day: 'Sat', amount: 920, isToday: false },
-    { day: 'Today', amount: 850, isToday: true },
-  ],
-  breakdown: {
-    basePay: 400,
-    orderEarnings: 270,
-    orderEarningsFormula: '18 x ₹15',
-    bonus: 50,
-    bonusLabel: '30 Orders',
-    tipsReceived: 130,
-    total: 850,
-  },
-  tips: {
-    cashTips: 80,
-    upiTips: 50,
-    totalTips: 130,
-    topTipper: { name: 'Priya Sharma', amount: 30 },
-  },
-  cashReconciliation: {
-    collected: 8250,
-    deposited: 6450,
-    cashInHand: 1800,
-    difference: 0,
-    status: 'balanced',
-  },
-  transactions: [
-    {
-      id: '1',
-      orderId: '#ORD-7821',
-      type: 'COD',
-      amount: 350,
-      timestamp: 'Today, 11:45 AM',
-      description: 'COD Collection',
-    },
-    {
-      id: '2',
-      orderId: '#ORD-7819',
-      type: 'UPI',
-      amount: 220,
-      timestamp: 'Today, 10:30 AM',
-      description: 'UPI Payment',
-    },
-    {
-      id: '3',
-      orderId: '#ORD-7815',
-      type: 'COD',
-      amount: 480,
-      timestamp: 'Today, 09:15 AM',
-      description: 'COD Collection',
-    },
-    {
-      id: '4',
-      orderId: '#ORD-7810',
-      type: 'BONUS',
-      amount: 50,
-      timestamp: 'Yesterday, 08:00 PM',
-      description: 'Daily Bonus',
-    },
-  ],
+type EarningsApiResponse = {
+  riderInfo: {
+    id: string;
+    name: string;
+    profilePicture: string;
+    isOnline: boolean;
+  };
+  earningsSummary: {
+    totalEarnings: number;
+    increasePercent: number;
+    decreasePercent: number;
+    earningsBreakdown: {
+      ordersDone: number;
+      basePay: number;
+      orderEarnings: number;
+      bonus: number;
+      tips: number;
+    };
+  };
+  charts: Array<{
+    day: string;
+    amount: number;
+  }>;
+};
+
+type OrderHistoryApiResponse = {
+  orders: Array<{
+    orderId: string;
+    orderStatus: string;
+    time: string;
+    route: {
+      pickupLocation: string;
+      dropoffLocation: string;
+    };
+    amount: number;
+    paymentMethod: string;
+  }>;
+};
+
+const EARNINGS_FILTER_MAP: Record<EarningsPeriod, string> = {
+  today: 'today',
+  thisWeek: 'this_week',
+  thisMonth: 'this_month',
+  lifetime: 'this_month',
+};
+
+const ORDER_HISTORY_FILTER_MAP: Record<EarningsPeriod, string> = {
+  today: 'today',
+  thisWeek: '7days',
+  thisMonth: '30days',
+  lifetime: '30days',
+};
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+const formatTimestamp = (iso: string): string => {
+  const d = new Date(iso);
+  const now = new Date();
+  const isToday =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+
+  const hours = d.getHours();
+  const mins = d.getMinutes();
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  const h = hours % 12 || 12;
+  const timeStr = `${h}:${String(mins).padStart(2, '0')} ${ampm}`;
+
+  if (isToday) { return `Today, ${timeStr}`; }
+  return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${timeStr}`;
+};
+
+const mapPaymentMethod = (method: string): TransactionType => {
+  const lower = (method || '').toLowerCase();
+  if (lower === 'upi' || lower === 'online') { return 'UPI'; }
+  return 'COD';
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  DELIVERED: 'Order Delivered',
+  REJECTED: 'Order Rejected',
+  CANCELLED: 'Order Cancelled',
+  PICKED_UP: 'Order Picked Up',
+  ACCEPTED: 'Order Accepted',
+  PARTNER_ASSIGNED: 'Partner Assigned',
+  ARRIVED_AT_STORE: 'Arrived at Store',
+  ARRIVED_AT_DESTINATION: 'Arrived at Destination',
 };
 
 const getEarningsData = async (
-  _period: EarningsPeriod,
+  partnerId: string,
+  period: EarningsPeriod,
 ): Promise<EarningsData> => {
-  // TODO: Replace with real API call when backend is ready
-  // const sessionKey = TokenStorage.getToken();
-  // return apiCall<EarningsData>(
-  //   axiosInstance.get('/v1/delivery-partner/earnings', {
-  //     params: { period },
-  //     headers: { SessionKey: sessionKey || '', 'Request-Origin': 'CAPTAIN' },
-  //   }),
-  // );
-  return MOCK_EARNINGS;
+  const sessionKey = await TokenStorage.getToken();
+  const earningsFilter = EARNINGS_FILTER_MAP[period];
+  const orderFilter = ORDER_HISTORY_FILTER_MAP[period];
+  const headers = {
+    SessionKey: sessionKey || '',
+    'Request-Origin': 'CAPTAIN',
+  };
+  const validateStatus = (status: number) => status >= 200 && status < 400;
+
+  console.log(`[Earnings] Fetching — earnings filter=${earningsFilter}, order filter=${orderFilter}, partner=${partnerId}`);
+
+  const [earningsResponse, orderHistoryResponse] = await Promise.all([
+    apiCall<EarningsApiResponse>(
+      axiosInstance.get(`/v1/delivery-partner/${partnerId}/earnings-summary`, {
+        params: { filter: earningsFilter },
+        headers,
+        validateStatus,
+      }),
+    ),
+    apiCall<OrderHistoryApiResponse>(
+      axiosInstance.get(`/v1/delivery-partner/${partnerId}/order-history`, {
+        params: { filter: orderFilter },
+        headers,
+        validateStatus,
+      }),
+    ).catch(err => {
+      console.warn('[Earnings] Order history fetch failed:', JSON.stringify(err, null, 2));
+      return { orders: [] } as OrderHistoryApiResponse;
+    }),
+  ]);
+
+  console.log('[Earnings] Summary response:', JSON.stringify(earningsResponse, null, 2));
+  console.log('[Earnings] Order history raw response:', JSON.stringify(orderHistoryResponse, null, 2));
+
+  const payload = (earningsResponse as any)?.data ?? earningsResponse;
+  const earningsSummary = payload?.earningsSummary ?? {};
+  const charts = payload?.charts ?? [];
+  const bd = earningsSummary?.earningsBreakdown ?? {};
+
+  const percentageChange =
+    (earningsSummary.increasePercent ?? 0) > 0
+      ? earningsSummary.increasePercent
+      : (earningsSummary.decreasePercent ?? 0) > 0
+        ? -earningsSummary.decreasePercent
+        : 0;
+
+  const orderPayload = (orderHistoryResponse as any)?.data ?? orderHistoryResponse;
+  const orders = orderPayload?.orders ?? [];
+  console.log(`[Earnings] Parsed ${orders.length} orders from history`);
+
+  const transactions = orders.map((order: any) => ({
+    id: order.orderId,
+    orderId: `#${order.orderId}`,
+    type: mapPaymentMethod(order.paymentMethod),
+    amount: order.amount,
+    timestamp: formatTimestamp(order.time),
+    description: STATUS_LABELS[order.orderStatus] || order.orderStatus,
+  }));
+
+  return {
+    summary: {
+      totalEarnings: earningsSummary.totalEarnings ?? 0,
+      percentageChange,
+      comparisonLabel: 'vs yesterday',
+      ordersDone: bd.ordersDone ?? 0,
+      basePay: bd.basePay ?? 0,
+      orderEarnings: bd.orderEarnings ?? 0,
+      bonus: bd.bonus ?? 0,
+      tips: bd.tips ?? 0,
+    },
+    last7Days: (charts ?? []).map(d => ({
+      day: d.day,
+      amount: d.amount,
+      isToday: ['Today', 'This Week', 'This Month'].includes(d.day),
+    })),
+    breakdown: {
+      basePay: bd.basePay ?? 0,
+      orderEarnings: bd.orderEarnings ?? 0,
+      orderEarningsFormula: '',
+      bonus: bd.bonus ?? 0,
+      bonusLabel: '',
+      tipsReceived: bd.tips ?? 0,
+      total: earningsSummary.totalEarnings ?? 0,
+    },
+    tips: {
+      cashTips: 0,
+      upiTips: 0,
+      totalTips: bd.tips ?? 0,
+      topTipper: null,
+    },
+    cashReconciliation: {
+      collected: 0,
+      deposited: 0,
+      cashInHand: 0,
+      difference: 0,
+      status: 'balanced',
+    },
+    transactions,
+  };
 };
 
 const earningsService = { getEarningsData };

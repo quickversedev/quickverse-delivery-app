@@ -27,10 +27,8 @@ export const API_CONFIG = {
   // ankit's IP
   // baseURL: 'http://10.0.2.2:8080',
   // production
-  baseURL: 'http://prd.quickverse.in',
-  // baseURL: 'http://qvadmin-dev.quickverse.in',
-  // baseURL: 'https://2d2c-27-60-4-109.ngrok-free.app',
-  // baseURL: 'http://console-wharf-overplant.ngrok-free.dev',
+  // baseURL: 'http://prd.quickverse.in',
+  baseURL: 'https://console-wharf-overplant.ngrok-free.dev',
   timeout: 15000,
   headers: {
     'Content-Type': 'application/json',
