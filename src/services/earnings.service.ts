@@ -54,9 +54,9 @@ const EARNINGS_FILTER_MAP: Record<EarningsPeriod, string> = {
 
 const ORDER_HISTORY_FILTER_MAP: Record<EarningsPeriod, string> = {
   today: 'today',
-  thisWeek: '7days',
-  thisMonth: '30days',
-  lifetime: '30days',
+  thisWeek: 'this_week',
+  thisMonth: 'this_month',
+  lifetime: 'this_month',
 };
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];

@@ -76,26 +76,35 @@ const EarningsScreen: React.FC = () => {
         contentContainerStyle={styles.scrollContent}
       >
         <PeriodFilterTabs selected={period} onSelect={setPeriod} />
-        <EarningsSummaryCard data={data.summary} />
 
-        <View style={styles.spacer} />
-        <WeeklyBarChart data={data.last7Days} />
-
-        {/* <View style={styles.spacer} />
-        <View style={styles.sideBySide}>
-          <View style={styles.halfCard}>
-            <EarningsBreakdownCard data={data.breakdown} />
+        {loading && data ? (
+          <View style={styles.inlineLoader}>
+            <ActivityIndicator size="small" color="#0E6DFD" />
           </View>
-          <View style={styles.halfCard}>
-            <TipsDashboardCard data={data.tips} />
-          </View>
-        </View> */}
+        ) : (
+          <>
+            <EarningsSummaryCard data={data.summary} />
 
-        {/* <View style={styles.spacer} />
-        <CashReconciliationCard data={data.cashReconciliation} /> */}
+            <View style={styles.spacer} />
+            <WeeklyBarChart data={data.last7Days} />
 
-        <View style={styles.spacer} />
-        <TransactionHistory data={data.transactions} />
+            {/* <View style={styles.spacer} />
+            <View style={styles.sideBySide}>
+              <View style={styles.halfCard}>
+                <EarningsBreakdownCard data={data.breakdown} />
+              </View>
+              <View style={styles.halfCard}>
+                <TipsDashboardCard data={data.tips} />
+              </View>
+            </View> */}
+
+            {/* <View style={styles.spacer} />
+            <CashReconciliationCard data={data.cashReconciliation} /> */}
+
+            <View style={styles.spacer} />
+            <TransactionHistory data={data.transactions} />
+          </>
+        )}
 
         <View style={{ height: 24 }} />
       </ScrollView>
@@ -123,6 +132,10 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingBottom: 16,
+  },
+  inlineLoader: {
+    paddingVertical: 80,
+    alignItems: 'center',
   },
   spacer: {
     height: 14,
