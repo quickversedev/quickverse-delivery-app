@@ -33,8 +33,11 @@ import type { ServiceType } from '../types/pricing';
 import { FONT_FAMILY } from '../theme/typography';
 import {
   getBestEffortCurrentLocation,
+  requestLocationAccess,
   type Coordinate,
 } from '../utils/location';
+import { isLocationEnabled } from 'react-native-device-info';
+import { promptForEnableLocationIfNeeded } from 'react-native-android-location-enabler';
 import { ChevronDown, ChevronUp } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle as SvgCircle } from 'react-native-svg';
@@ -551,6 +554,42 @@ const HomeScreen: React.FC = () => {
       return;
     }
     const nextStatus = !isOnline;
+
+    if (nextStatus) {
+      if (Platform.OS === 'android') {
+        try {
+          promptForEnableLocationIfNeeded();
+          // const enableResult = await RNLocationEnabler.promptForEnableLocationIfNeeded({
+          //   interval: 10000,
+          //   fastInterval: 5000,
+          // });
+          // if (enableResult !== 'enabled' && enableResult !== 'already-enabled') {
+          //   return;
+          // }
+        } catch (error) {
+          console.log('Location enabler error:', error);
+          return;
+        }
+      } else {
+        const locationEnabled = await isLocationEnabled();
+        if (!locationEnabled) {
+          Alert.alert(
+            'Location Disabled',
+            'Please enable location services on your device to go online.',
+          );
+          return;
+        }
+      }
+
+      const hasPermission = await requestLocationAccess();
+      if (!hasPermission) {
+        Alert.alert(
+          'Permission Denied',
+          'Location permission is required to go online. Please enable it in app settings.',
+        );
+        return;
+      }
+    }
     setIsOnline(nextStatus);
     setIsToggling(true);
     try {

@@ -8,6 +8,7 @@ import ProfileScreen from './ProfileScreen';
 import EarningsScreen from './EarningsScreen';
 import OrdersScreen from './OrdersScreen';
 import RewardsScreen from './RewardsScreen';
+import LocationPermissionScreen from './LocationPermissionScreen';
 
 export {
   HomeScreen,
@@ -20,4 +21,5 @@ export {
   EarningsScreen,
   OrdersScreen,
   RewardsScreen,
+  LocationPermissionScreen,
 };

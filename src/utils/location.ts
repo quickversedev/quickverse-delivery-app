@@ -6,6 +6,21 @@ export type Coordinate = {
   longitude: number;
 };
 
+export const checkLocationPermission = async (): Promise<boolean> => {
+  if (Platform.OS === 'android') {
+    const coarseGranted = await PermissionsAndroid.check(
+      PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION,
+    );
+    const fineGranted = await PermissionsAndroid.check(
+      PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+    );
+    return coarseGranted || fineGranted;
+  }
+  // On iOS, checking without requesting requires a specific library, so we just assume true or handle differently
+  // Since requestLocationAccess does it, we return true and let the system handle it for now.
+  return true;
+};
+
 const requestAndroidLocationPermission = async (): Promise<boolean> => {
   const coarseGranted = await PermissionsAndroid.check(
     PermissionsAndroid.PERMISSIONS.ACCESS_COARSE_LOCATION,

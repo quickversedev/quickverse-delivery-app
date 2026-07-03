@@ -4,7 +4,7 @@ import useAuthStore from '../hooks/useAuthStore';
 import deliveryPartnerService from '../services/delivery-partner.service';
 import { getBestEffortCurrentLocation } from '../utils/location';
 
-const LOCATION_SYNC_INTERVAL_MS = 1 * 60 * 1000;
+const LOCATION_SYNC_INTERVAL_MS = 1000;
 
 const GlobalLocationSync: React.FC = () => {
   const partnerId = useAuthStore(state => state.authData.partnerId);
@@ -25,11 +25,6 @@ const GlobalLocationSync: React.FC = () => {
   const syncLocation = useCallback(async () => {
     if (!partnerId) {
       console.log('[LocationSync] Skipped — no partnerId');
-      return;
-    }
-
-    if (isSyncInProgressRef.current) {
-      console.log('[LocationSync] Skipped — sync already in progress');
       return;
     }
 
