@@ -91,7 +91,7 @@ const MainTabNavigator: React.FC = () => (
     })}
   >
     <Tab.Screen name="HomeTab" component={HomeScreen} />
-    <Tab.Screen name="NewHomeTab" component={NewHomeScreen} />
+    {/* <Tab.Screen name="NewHomeTab" component={NewHomeScreen} /> */}
     <Tab.Screen name="EarningsTab" component={EarningsScreen} />
     <Tab.Screen name="ProfileTab" component={ProfileScreen} />
   </Tab.Navigator>

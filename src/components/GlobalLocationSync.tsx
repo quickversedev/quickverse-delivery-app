@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Platform, PermissionsAndroid } from 'react-native';
+import { AppState, Platform, PermissionsAndroid } from 'react-native';
 import BackgroundService from 'react-native-background-actions';
 import useAuthStore from '../hooks/useAuthStore';
 import deliveryPartnerService from '../services/delivery-partner.service';
@@ -9,13 +9,23 @@ const LOCATION_SYNC_INTERVAL_MS = 60000;
 
 const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
+const hasForegroundLocationPermission = async (): Promise<boolean> => {
+  if (Platform.OS !== 'android') { return true; }
+  return PermissionsAndroid.check(
+    PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+  );
+};
+
 const requestBackgroundLocationPermission = async (): Promise<boolean> => {
   if (Platform.OS !== 'android' || Platform.Version < 29) { return true; }
 
-  const granted = await PermissionsAndroid.check(
+  const hasForeground = await hasForegroundLocationPermission();
+  if (!hasForeground) { return false; }
+
+  const hasBg = await PermissionsAndroid.check(
     PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION,
   );
-  if (granted) { return true; }
+  if (hasBg) { return true; }
 
   const result = await PermissionsAndroid.request(
     PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION,
@@ -71,6 +81,21 @@ const GlobalLocationSync: React.FC = () => {
   const isBootstrapping = useAuthStore(state => state.isBootstrapping);
   const isRunningRef = useRef(false);
 
+  // Request background location permission on startup and when app comes to foreground
+  useEffect(() => {
+    if (isBootstrapping || !isLoggedIn) { return; }
+
+    requestBackgroundLocationPermission();
+
+    const subscription = AppState.addEventListener('change', nextState => {
+      if (nextState === 'active') {
+        requestBackgroundLocationPermission();
+      }
+    });
+    return () => subscription.remove();
+  }, [isBootstrapping, isLoggedIn]);
+
+  // Start/stop background service — only after foreground location is granted
   useEffect(() => {
     const shouldRun = !isBootstrapping && isLoggedIn && !!partnerId;
 
@@ -87,7 +112,11 @@ const GlobalLocationSync: React.FC = () => {
     const start = async () => {
       if (isRunningRef.current) { return; }
 
-      await requestBackgroundLocationPermission();
+      const hasPermission = await hasForegroundLocationPermission();
+      if (!hasPermission) {
+        console.log('[LocationSync] Waiting for foreground location permission');
+        return;
+      }
 
       try {
         isRunningRef.current = true;
@@ -104,7 +133,13 @@ const GlobalLocationSync: React.FC = () => {
 
     start();
 
+    // Retry when app comes to foreground (user may have just granted permission via LocationGuard)
+    const subscription = AppState.addEventListener('change', nextState => {
+      if (nextState === 'active') { start(); }
+    });
+
     return () => {
+      subscription.remove();
       if (isRunningRef.current) {
         BackgroundService.stop().then(() => {
           isRunningRef.current = false;
