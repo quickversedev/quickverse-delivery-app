@@ -1,95 +1,117 @@
-import React, { useCallback, useEffect, useRef } from 'react';
-import { AppState, type AppStateStatus } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { Platform, PermissionsAndroid } from 'react-native';
+import BackgroundService from 'react-native-background-actions';
 import useAuthStore from '../hooks/useAuthStore';
 import deliveryPartnerService from '../services/delivery-partner.service';
 import { getBestEffortCurrentLocation } from '../utils/location';
 
-const LOCATION_SYNC_INTERVAL_MS = 1 * 60 * 1000;
+const LOCATION_SYNC_INTERVAL_MS = 60000;
 
-const GlobalLocationSync: React.FC = () => {
-  const partnerId = useAuthStore(state => state.authData.partnerId);
-  const isLoggedIn = useAuthStore(state => state.isLoggedIn);
-  const isBootstrapping = useAuthStore(state => state.isBootstrapping);
+const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const isSyncInProgressRef = useRef(false);
-  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+const requestBackgroundLocationPermission = async (): Promise<boolean> => {
+  if (Platform.OS !== 'android' || Platform.Version < 29) { return true; }
 
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', nextState => {
-      appStateRef.current = nextState;
-    });
-    return () => subscription.remove();
-  }, []);
+  const granted = await PermissionsAndroid.check(
+    PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION,
+  );
+  if (granted) { return true; }
 
-  const syncLocation = useCallback(async () => {
-    if (!partnerId) {
-      console.log('[LocationSync] Skipped — no partnerId');
-      return;
-    }
+  const result = await PermissionsAndroid.request(
+    PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION,
+    {
+      title: 'Background Location Access',
+      message:
+        'QV Delivery needs access to your location in the background so customers can track their delivery even when the app is minimized.',
+      buttonPositive: 'Allow',
+      buttonNegative: 'Deny',
+    },
+  );
+  return result === PermissionsAndroid.RESULTS.GRANTED;
+};
 
-    if (isSyncInProgressRef.current) {
-      console.log('[LocationSync] Skipped — sync already in progress');
-      return;
-    }
+const locationTask = async (taskData?: { partnerId: string }) => {
+  const { partnerId } = taskData || {};
+  if (!partnerId) { return; }
 
-    if (appStateRef.current !== 'active') {
-      console.log(
-        '[LocationSync] Skipped — app not active:',
-        appStateRef.current,
-      );
-      return;
-    }
-
-    try {
-      isSyncInProgressRef.current = true;
-      console.log('[LocationSync] Fetching location for partnerId:', partnerId);
-
-      const coordinate = await getBestEffortCurrentLocation();
-      console.log('[LocationSync] Location obtained:', coordinate);
-
-      const response =
+  await new Promise<void>(async resolve => {
+    while (BackgroundService.isRunning()) {
+      try {
+        const coordinate = await getBestEffortCurrentLocation();
+        console.log('[LocationSync] Got location:', coordinate.latitude, coordinate.longitude);
         await deliveryPartnerService.updateDeliveryPartnerLocation(
           partnerId,
           coordinate.latitude,
           coordinate.longitude,
         );
-      console.log('[LocationSync] Sync successful:', response);
-    } catch (error) {
-      console.error('[LocationSync] Sync failed:', error);
-    } finally {
-      isSyncInProgressRef.current = false;
+        console.log('[LocationSync] Sync successful');
+      } catch (error) {
+        console.error('[LocationSync] Sync failed:', error);
+      }
+      await sleep(LOCATION_SYNC_INTERVAL_MS);
     }
-  }, [partnerId]);
+    resolve();
+  });
+};
+
+const bgOptions = {
+  taskName: 'LocationSync',
+  taskTitle: 'QV Delivery',
+  taskDesc: 'Sharing your location with customers',
+  taskIcon: { name: 'ic_launcher', type: 'mipmap' },
+  color: '#0E6DFD',
+  linkingURI: undefined,
+  foregroundServiceType: ['location'],
+  parameters: { partnerId: '' },
+};
+
+const GlobalLocationSync: React.FC = () => {
+  const partnerId = useAuthStore(state => state.authData.partnerId);
+  const isLoggedIn = useAuthStore(state => state.isLoggedIn);
+  const isBootstrapping = useAuthStore(state => state.isBootstrapping);
+  const isRunningRef = useRef(false);
 
   useEffect(() => {
-    const clearSyncInterval = () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-        console.log('[LocationSync] Interval cleared');
-      }
-    };
+    const shouldRun = !isBootstrapping && isLoggedIn && !!partnerId;
 
-    if (isBootstrapping || !isLoggedIn || !partnerId) {
-      console.log('[LocationSync] Conditions not met — clearing interval', {
-        isBootstrapping,
-        isLoggedIn,
-        partnerId,
-      });
-      clearSyncInterval();
+    if (!shouldRun) {
+      if (isRunningRef.current) {
+        console.log('[LocationSync] Stopping background service');
+        BackgroundService.stop().then(() => {
+          isRunningRef.current = false;
+        });
+      }
       return;
     }
 
-    console.log(
-      '[LocationSync] Starting sync interval for partnerId:',
-      partnerId,
-    );
-    syncLocation();
-    intervalRef.current = setInterval(syncLocation, LOCATION_SYNC_INTERVAL_MS);
+    const start = async () => {
+      if (isRunningRef.current) { return; }
 
-    return clearSyncInterval;
-  }, [partnerId, isBootstrapping, isLoggedIn, syncLocation]);
+      await requestBackgroundLocationPermission();
+
+      try {
+        isRunningRef.current = true;
+        await BackgroundService.start(locationTask, {
+          ...bgOptions,
+          parameters: { partnerId },
+        });
+        console.log('[LocationSync] Background service started for:', partnerId);
+      } catch (error) {
+        console.error('[LocationSync] Failed to start background service:', error);
+        isRunningRef.current = false;
+      }
+    };
+
+    start();
+
+    return () => {
+      if (isRunningRef.current) {
+        BackgroundService.stop().then(() => {
+          isRunningRef.current = false;
+        });
+      }
+    };
+  }, [partnerId, isBootstrapping, isLoggedIn]);
 
   return null;
 };
