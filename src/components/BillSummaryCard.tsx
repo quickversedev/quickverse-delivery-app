@@ -1,7 +1,42 @@
 import React, { useState } from 'react';
-import { Pressable, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { ChevronDown, ChevronUp, FileText, Info } from 'lucide-react-native';
 import { FONT_FAMILY } from '../theme/typography';
+
+type OrderFinance = {
+  itemTotalAmount?: number;
+  couponId?: string | null;
+  couponCode?: string | null;
+  couponDiscount?: number;
+  isFreeDelivery?: boolean;
+  amountAfterCoupon?: number;
+  packagingCharges?: number;
+  actualDeliveryFee?: number;
+  deliveryFee?: number;
+  platformFee?: number;
+  razorpayCharges?: number;
+  serviceGstRate?: number;
+  commissionGst?: number;
+  deliveryGst?: number;
+  packagingGst?: number;
+  codGst?: number;
+  platformGst?: number;
+  totalGst?: number;
+  taxableAmount?: number;
+  payableAmount?: number;
+  commissionRate?: number;
+  commission?: number;
+  paymentMethod?: string | null;
+  codCharges?: number;
+  createdAt?: string | number;
+  updatedAt?: string | number | null;
+};
 
 interface BillSummaryCardProps {
   totalAmount: number;
@@ -17,6 +52,7 @@ interface BillSummaryCardProps {
   taxableAmount?: number;
   commissionRate?: number;
   gstRate?: number;
+  finance?: OrderFinance | null;
 }
 
 const formatAmount = (value: number) => `₹${value.toFixed(2)}`;
@@ -35,9 +71,24 @@ const BillSummaryCard: React.FC<BillSummaryCardProps> = ({
   taxableAmount = 0,
   commissionRate,
   gstRate,
+  finance = null,
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [showTaxBreakdown, setShowTaxBreakdown] = useState(false);
+
+  // If `finance` is provided, prefer its values over the raw props.
+  const effectiveSubtotal = finance?.itemTotalAmount ?? subtotal;
+  const effectiveDeliveryFee =
+    finance?.actualDeliveryFee ?? finance?.deliveryFee ?? deliveryFee;
+  const effectivePlatformFee = finance?.platformFee ?? platformFee;
+  const effectivePackagingCharges =
+    finance?.packagingCharges ?? packagingCharges;
+  const effectiveTaxes = finance?.totalGst ?? taxes;
+  const effectiveCommission = finance?.commission ?? commission;
+  const effectiveTaxableAmount = finance?.taxableAmount ?? taxableAmount;
+  const effectiveCommissionRate = finance?.commissionRate ?? commissionRate;
+  const effectiveGstRate = finance?.serviceGstRate ?? gstRate;
+  const effectiveTotalAmount = finance?.payableAmount ?? totalAmount;
 
   return (
     <View style={styles.card}>
@@ -51,8 +102,12 @@ const BillSummaryCard: React.FC<BillSummaryCardProps> = ({
             <FileText size={18} color="#0E6DFD" />
           </View>
           <View>
-            <Text style={styles.headerLabel}>Total Bill (Inc. Taxes & Charges)</Text>
-            <Text style={styles.headerAmount}>{formatAmount(totalAmount)}</Text>
+            <Text style={styles.headerLabel}>
+              Total Bill (Inc. Taxes & Charges)
+            </Text>
+            <Text style={styles.headerAmount}>
+              {formatAmount(effectiveTotalAmount)}
+            </Text>
           </View>
         </View>
         <View style={styles.headerRight}>
@@ -71,42 +126,67 @@ const BillSummaryCard: React.FC<BillSummaryCardProps> = ({
         <View style={styles.breakdown}>
           <Text style={styles.sectionTitle}>BILL DETAILS</Text>
 
-          <View style={styles.row}>
-            <Text style={styles.label}>Sub Total</Text>
-            <Text style={styles.value}>{formatAmount(subtotal)}</Text>
-          </View>
-
-          <View style={styles.row}>
-            <Text style={styles.label}>Delivery Fee</Text>
-            <View style={styles.feeRow}>
-              {deliveryFeeOriginal != null && deliveryFeeOriginal !== deliveryFee && (
-                <Text style={styles.crossedText}>₹{deliveryFeeOriginal}</Text>
-              )}
-              <Text style={styles.value}>{formatAmount(deliveryFee)}</Text>
+          {effectiveSubtotal > 0 && (
+            <View style={styles.row}>
+              <Text style={styles.label}>Sub Total</Text>
+              <Text style={styles.value}>
+                {formatAmount(effectiveSubtotal)}
+              </Text>
             </View>
-          </View>
+          )}
 
-          <View style={styles.row}>
-            <Text style={styles.label}>Platform Fee</Text>
-            <View style={styles.feeRow}>
-              {platformFeeOriginal != null && platformFeeOriginal !== platformFee && (
-                <Text style={styles.crossedText}>₹{platformFeeOriginal}</Text>
-              )}
-              <Text style={styles.value}>{formatAmount(platformFee)}</Text>
+          {effectiveDeliveryFee > 0 && (
+            <View style={styles.row}>
+              <Text style={styles.label}>Delivery Fee</Text>
+              <View style={styles.feeRow}>
+                {deliveryFeeOriginal != null &&
+                  deliveryFeeOriginal !== effectiveDeliveryFee && (
+                    <Text style={styles.crossedText}>
+                      ₹{deliveryFeeOriginal}
+                    </Text>
+                  )}
+                <Text style={styles.value}>
+                  {formatAmount(effectiveDeliveryFee)}
+                </Text>
+              </View>
             </View>
-          </View>
+          )}
 
-          <View style={styles.row}>
-            <Text style={styles.label}>Packaging Charges</Text>
-            <View style={styles.feeRow}>
-              {packagingChargesOriginal != null && packagingChargesOriginal !== packagingCharges && (
-                <Text style={styles.crossedText}>₹{packagingChargesOriginal}</Text>
-              )}
-              <Text style={styles.value}>{formatAmount(packagingCharges)}</Text>
+          {effectivePlatformFee > 0 && (
+            <View style={styles.row}>
+              <Text style={styles.label}>Platform Fee</Text>
+              <View style={styles.feeRow}>
+                {platformFeeOriginal != null &&
+                  platformFeeOriginal !== effectivePlatformFee && (
+                    <Text style={styles.crossedText}>
+                      ₹{platformFeeOriginal}
+                    </Text>
+                  )}
+                <Text style={styles.value}>
+                  {formatAmount(effectivePlatformFee)}
+                </Text>
+              </View>
             </View>
-          </View>
+          )}
 
-          {taxes > 0 && (
+          {effectivePackagingCharges > 0 && (
+            <View style={styles.row}>
+              <Text style={styles.label}>Packaging Charges</Text>
+              <View style={styles.feeRow}>
+                {packagingChargesOriginal != null &&
+                  packagingChargesOriginal !== effectivePackagingCharges && (
+                    <Text style={styles.crossedText}>
+                      ₹{packagingChargesOriginal}
+                    </Text>
+                  )}
+                <Text style={styles.value}>
+                  {formatAmount(effectivePackagingCharges)}
+                </Text>
+              </View>
+            </View>
+          )}
+
+          {effectiveTaxes > 0 && (
             <View>
               <Pressable
                 style={styles.row}
@@ -116,26 +196,42 @@ const BillSummaryCard: React.FC<BillSummaryCardProps> = ({
                   <Text style={styles.label}>Taxes (GST & Services)</Text>
                   <Info size={12} color="#64748B" style={styles.infoIcon} />
                 </View>
-                <Text style={styles.value}>{formatAmount(taxes)}</Text>
+                <Text style={styles.value}>{formatAmount(effectiveTaxes)}</Text>
               </Pressable>
 
               {showTaxBreakdown && (
                 <View style={styles.taxBreakdown}>
-                  <Text style={styles.taxText}>
-                    Commission ({commissionRate != null ? `${(commissionRate * 100).toFixed(0)}%` : '10%'}): {formatAmount(commission)}
-                  </Text>
-                  <Text style={styles.taxText}>
-                    Delivery Fee: {formatAmount(deliveryFee)}
-                  </Text>
-                  <Text style={styles.taxText}>
-                    Platform Fee: {formatAmount(platformFee)}
-                  </Text>
+                  {effectiveCommission > 0 && (
+                    <Text style={styles.taxText}>
+                      Commission (
+                      {effectiveCommissionRate != null
+                        ? `${(effectiveCommissionRate * 100).toFixed(0)}%`
+                        : '10%'}
+                      ): {formatAmount(effectiveCommission)}
+                    </Text>
+                  )}
+                  {effectiveDeliveryFee > 0 && (
+                    <Text style={styles.taxText}>
+                      Delivery Fee: {formatAmount(effectiveDeliveryFee)}
+                    </Text>
+                  )}
+                  {effectivePlatformFee > 0 && (
+                    <Text style={styles.taxText}>
+                      Platform Fee: {formatAmount(effectivePlatformFee)}
+                    </Text>
+                  )}
                   <View style={styles.taxDivider} />
-                  <Text style={styles.taxText}>
-                    Taxable Amount: {formatAmount(taxableAmount)}
-                  </Text>
+                  {effectiveTaxableAmount > 0 && (
+                    <Text style={styles.taxText}>
+                      Taxable Amount: {formatAmount(effectiveTaxableAmount)}
+                    </Text>
+                  )}
                   <Text style={styles.taxTextBold}>
-                    GST ({gstRate != null ? `${(gstRate * 100).toFixed(0)}%` : '18%'}): {formatAmount(taxes)}
+                    GST (
+                    {effectiveGstRate != null
+                      ? `${(effectiveGstRate * 100).toFixed(0)}%`
+                      : '18%'}
+                    ): {formatAmount(effectiveTaxes)}
                   </Text>
                 </View>
               )}
@@ -144,7 +240,9 @@ const BillSummaryCard: React.FC<BillSummaryCardProps> = ({
 
           <View style={styles.totalRow}>
             <Text style={styles.totalLabel}>Total Pay</Text>
-            <Text style={styles.totalValue}>{formatAmount(totalAmount)}</Text>
+            <Text style={styles.totalValue}>
+              {formatAmount(effectiveTotalAmount)}
+            </Text>
           </View>
         </View>
       )}

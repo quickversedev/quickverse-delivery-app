@@ -184,7 +184,9 @@ const LiveOrderCard: React.FC<LiveOrderCardProps> = ({ order }) => {
           {order.orderDetails?.customerName || 'Customer'}
         </Text>
         <Text style={styles.liveEarningsInline}>
-          {formatCurrencyLocal(liveComputedTotal)}
+          {formatCurrencyLocal(
+            order?.finance?.payableAmount || liveComputedTotal,
+          )}
         </Text>
       </View>
 
@@ -618,7 +620,13 @@ const HomeScreen: React.FC = () => {
     return getOrderTimestamp(order);
   };
 
-  const LIVE_INNER_STATES = ['ACCEPTED', 'SHIPPED', 'PENDING'];
+  const LIVE_INNER_STATES = [
+    'ACCEPTED',
+    'SHIPPED',
+    'PENDING',
+    'READY_FOR_PICKUP',
+    'IN_TRANSIT',
+  ];
 
   const isOrderLive = (o: DeliveryPartnerOrder) =>
     LIVE_INNER_STATES.includes(o.orderDetails?.state?.toUpperCase() ?? '');
@@ -891,7 +899,7 @@ const HomeScreen: React.FC = () => {
               #{order.orderId || order.id}
             </Text>
             <Text style={styles.orderCardSummary}>
-              {shopName} · {formatCurrency(computedTotal)}
+              {shopName} · {formatCurrency(order?.finance?.payableAmount || computedTotal)}
             </Text>
           </View>
           <View style={styles.orderCardHeaderRight}>
@@ -1034,6 +1042,7 @@ const HomeScreen: React.FC = () => {
               taxableAmount={pricingTaxableAmount}
               commissionRate={pricing.commissionRate}
               gstRate={pricing.gstRate}
+              finance={order?.finance}
             />
             {!!order.orderDetails?.orderLink && (
               <TouchableOpacity

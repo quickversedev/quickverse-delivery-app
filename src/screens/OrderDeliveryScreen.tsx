@@ -509,6 +509,8 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
     pricing.packagingCharges +
     taxes;
 
+  const isPrepaid = order?.finance?.paymentMethod === 'PREPAID';
+
   const openOrderWebView = () => {
     const url = order.orderDetails?.orderLink;
     if (!url) return;
@@ -559,20 +561,22 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
       // Mark that the user attempted submission so inline errors appear
       setSubmitAttempted(true);
 
-      if (!paymentMode) {
-        Alert.alert(
-          'Select Payment Mode',
-          'Please select Online or Cash before marking as delivered.',
-        );
-        return;
-      }
-      // For ONLINE, screenshot is required
-      if (paymentMode === 'ONLINE' && !evidenceImage) {
-        Alert.alert(
-          'Upload Required',
-          'Please upload the payment screenshot to confirm online payment.',
-        );
-        return;
+      if (isPrepaid) {
+        if (!paymentMode) {
+          Alert.alert(
+            'Select Payment Mode',
+            'Please select Online or Cash before marking as delivered.',
+          );
+          return;
+        }
+        // For ONLINE, screenshot is required
+        if (paymentMode === 'ONLINE' && !evidenceImage) {
+          Alert.alert(
+            'Upload Required',
+            'Please upload the payment screenshot to confirm online payment.',
+          );
+          return;
+        }
       }
     }
 
@@ -886,149 +890,159 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
             <View style={s.amountCompactRight}>
               <Text style={s.amountCompactCaption}>Collect</Text>
               <Text style={s.amountCompactValue}>
-                {formatCurrency(computedTotal)}
+                {formatCurrency(order?.finance?.payableAmount || computedTotal)}
               </Text>
             </View>
           </View>
         </View>
 
         {/* ── Payment Mode ── */}
-        <View style={s.infoCard}>
-          <Text style={s.sectionLabel}>PAYMENT MODE</Text>
-
-          {/* Mode selector buttons */}
-          <View style={s.paymentModeRow}>
-            <TouchableOpacity
-              style={[
-                s.paymentModeBtn,
-                paymentMode === 'ONLINE' && s.paymentModeBtnActive,
-              ]}
-              onPress={() => handlePaymentModeChange('ONLINE')}
-              activeOpacity={0.85}
-            >
-              <CreditCard
-                size={18}
-                color={paymentMode === 'ONLINE' ? '#0E6DFD' : '#94A3B8'}
-              />
-              <Text
-                style={[
-                  s.paymentModeBtnText,
-                  paymentMode === 'ONLINE' && s.paymentModeBtnTextActive,
-                ]}
-              >
-                Online
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                s.paymentModeBtn,
-                paymentMode === 'CASH' && s.paymentModeBtnActive,
-              ]}
-              onPress={() => handlePaymentModeChange('CASH')}
-              activeOpacity={0.85}
-            >
-              <Banknote
-                size={18}
-                color={paymentMode === 'CASH' ? '#0E6DFD' : '#94A3B8'}
-              />
-              <Text
-                style={[
-                  s.paymentModeBtnText,
-                  paymentMode === 'CASH' && s.paymentModeBtnTextActive,
-                ]}
-              >
-                Cash
-              </Text>
-            </TouchableOpacity>
+        {isPrepaid ? (
+          <View style={s.infoCard}>
+            <Text style={s.sectionLabel}>PAYMENT MODE</Text>
+            <View style={s.prepaidNote}>
+              <Text style={s.prepaidNoteEmoji}>💳</Text>
+              <Text style={s.prepaidNoteText}>Prepaid</Text>
+            </View>
           </View>
+        ) : (
+          <View style={s.infoCard}>
+            <Text style={s.sectionLabel}>PAYMENT MODE</Text>
 
-          {/* ONLINE — QR + evidence upload */}
-          {paymentMode === 'ONLINE' && (
-            <View style={s.evidenceSection}>
-              {/* Show QR button */}
+            {/* Mode selector buttons */}
+            <View style={s.paymentModeRow}>
               <TouchableOpacity
-                style={s.showQrBtn}
-                onPress={() => setQrModalVisible(true)}
+                style={[
+                  s.paymentModeBtn,
+                  paymentMode === 'ONLINE' && s.paymentModeBtnActive,
+                ]}
+                onPress={() => handlePaymentModeChange('ONLINE')}
                 activeOpacity={0.85}
               >
-                <Text style={s.showQrBtnEmoji}>📲</Text>
-                <Text style={s.showQrBtnText}>Show UPI QR Code</Text>
+                <CreditCard
+                  size={18}
+                  color={paymentMode === 'ONLINE' ? '#0E6DFD' : '#94A3B8'}
+                />
+                <Text
+                  style={[
+                    s.paymentModeBtnText,
+                    paymentMode === 'ONLINE' && s.paymentModeBtnTextActive,
+                  ]}
+                >
+                  Online
+                </Text>
               </TouchableOpacity>
 
-              {/* Upload proof — required for ONLINE */}
-              <View style={s.evidenceLabelRow}>
-                <Text style={s.evidenceSectionLabel}>
-                  Upload Payment Screenshot
+              <TouchableOpacity
+                style={[
+                  s.paymentModeBtn,
+                  paymentMode === 'CASH' && s.paymentModeBtnActive,
+                ]}
+                onPress={() => handlePaymentModeChange('CASH')}
+                activeOpacity={0.85}
+              >
+                <Banknote
+                  size={18}
+                  color={paymentMode === 'CASH' ? '#0E6DFD' : '#94A3B8'}
+                />
+                <Text
+                  style={[
+                    s.paymentModeBtnText,
+                    paymentMode === 'CASH' && s.paymentModeBtnTextActive,
+                  ]}
+                >
+                  Cash
                 </Text>
-                <View style={s.evidenceRequiredBadge}>
-                  <Text style={s.evidenceRequiredBadgeText}>Required</Text>
-                </View>
-              </View>
+              </TouchableOpacity>
+            </View>
 
-              {evidenceImage ? (
-                /* Preview of uploaded image */
-                <View style={s.evidencePreview}>
-                  <Image
-                    source={{ uri: evidenceImage }}
-                    style={s.evidenceImage}
-                  />
-                  <TouchableOpacity
-                    style={s.evidenceRemove}
-                    onPress={() => setEvidenceImage(null)}
-                  >
-                    <Text style={s.evidenceRemoveText}>Remove</Text>
-                  </TouchableOpacity>
+            {/* ONLINE — QR + evidence upload */}
+            {paymentMode === 'ONLINE' && (
+              <View style={s.evidenceSection}>
+                {/* Show QR button */}
+                <TouchableOpacity
+                  style={s.showQrBtn}
+                  onPress={() => setQrModalVisible(true)}
+                  activeOpacity={0.85}
+                >
+                  <Text style={s.showQrBtnEmoji}>📲</Text>
+                  <Text style={s.showQrBtnText}>Show UPI QR Code</Text>
+                </TouchableOpacity>
+
+                {/* Upload proof — required for ONLINE */}
+                <View style={s.evidenceLabelRow}>
+                  <Text style={s.evidenceSectionLabel}>
+                    Upload Payment Screenshot
+                  </Text>
+                  <View style={s.evidenceRequiredBadge}>
+                    <Text style={s.evidenceRequiredBadgeText}>Required</Text>
+                  </View>
                 </View>
-              ) : (
-                <>
-                  <View style={s.evidenceUploadRow}>
+
+                {evidenceImage ? (
+                  /* Preview of uploaded image */
+                  <View style={s.evidencePreview}>
+                    <Image
+                      source={{ uri: evidenceImage }}
+                      style={s.evidenceImage}
+                    />
                     <TouchableOpacity
-                      style={[
-                        s.evidenceBtn,
-                        showEvidenceError && s.evidenceBtnError,
-                      ]}
-                      onPress={takePhoto}
-                      activeOpacity={0.85}
+                      style={s.evidenceRemove}
+                      onPress={() => setEvidenceImage(null)}
                     >
-                      <Camera size={18} color="#0E6DFD" />
-                      <Text style={s.evidenceBtnText}>Take Photo</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[
-                        s.evidenceBtn,
-                        showEvidenceError && s.evidenceBtnError,
-                      ]}
-                      onPress={pickImage}
-                      activeOpacity={0.85}
-                    >
-                      <Upload size={18} color="#7C3AED" />
-                      <Text style={[s.evidenceBtnText, { color: '#7C3AED' }]}>
-                        Upload
-                      </Text>
+                      <Text style={s.evidenceRemoveText}>Remove</Text>
                     </TouchableOpacity>
                   </View>
-                  {/* Inline error message shown after a failed submit attempt */}
-                  {showEvidenceError && (
-                    <Text style={s.evidenceErrorText}>
-                      ⚠ Screenshot is required for online payment
-                    </Text>
-                  )}
-                </>
-              )}
-            </View>
-          )}
+                ) : (
+                  <>
+                    <View style={s.evidenceUploadRow}>
+                      <TouchableOpacity
+                        style={[
+                          s.evidenceBtn,
+                          showEvidenceError && s.evidenceBtnError,
+                        ]}
+                        onPress={takePhoto}
+                        activeOpacity={0.85}
+                      >
+                        <Camera size={18} color="#0E6DFD" />
+                        <Text style={s.evidenceBtnText}>Take Photo</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[
+                          s.evidenceBtn,
+                          showEvidenceError && s.evidenceBtnError,
+                        ]}
+                        onPress={pickImage}
+                        activeOpacity={0.85}
+                      >
+                        <Upload size={18} color="#7C3AED" />
+                        <Text style={[s.evidenceBtnText, { color: '#7C3AED' }]}>
+                          Upload
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                    {/* Inline error message shown after a failed submit attempt */}
+                    {showEvidenceError && (
+                      <Text style={s.evidenceErrorText}>
+                        ⚠ Screenshot is required for online payment
+                      </Text>
+                    )}
+                  </>
+                )}
+              </View>
+            )}
 
-          {/* CASH — confirmation note */}
-          {paymentMode === 'CASH' && (
-            <View style={s.cashNote}>
-              <Text style={s.cashNoteEmoji}>💵</Text>
-              <Text style={s.cashNoteText}>
-                Collect cash from the customer before marking as delivered.
-              </Text>
-            </View>
-          )}
-        </View>
+            {/* CASH — confirmation note */}
+            {paymentMode === 'CASH' && (
+              <View style={s.cashNote}>
+                <Text style={s.cashNoteEmoji}>💵</Text>
+                <Text style={s.cashNoteText}>
+                  Collect cash from the customer before marking as delivered.
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
 
         {order.orderDetails?.orderLink && (
           <TouchableOpacity
@@ -1075,7 +1089,7 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
       <View style={[s.successRow, s.successRowLast]}>
         <Text style={s.successRowLabel}>Order Value</Text>
         <Text style={[s.successRowValue, s.successRowValueBold]}>
-          {formatCurrency(computedTotal)}
+          {formatCurrency(order?.finance?.payableAmount || computedTotal)}
         </Text>
       </View>
     </View>
@@ -1321,7 +1335,18 @@ const mk = StyleSheet.create({
 
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F2F5FA' },
-
+  prepaidNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+  },
+  prepaidNoteEmoji: { fontSize: 16 },
+  prepaidNoteText: {
+    fontSize: 13,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#0F172A',
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

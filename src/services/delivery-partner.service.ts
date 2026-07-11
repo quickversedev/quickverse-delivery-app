@@ -12,6 +12,35 @@ export type DeliveryPartnerProfile = {
   isOnline?: boolean;
 };
 
+type OrderFinance = {
+  itemTotalAmount?: number;
+  couponId?: string | null;
+  couponCode?: string | null;
+  couponDiscount?: number;
+  isFreeDelivery?: boolean;
+  amountAfterCoupon?: number;
+  packagingCharges?: number;
+  actualDeliveryFee?: number;
+  deliveryFee?: number;
+  platformFee?: number;
+  razorpayCharges?: number;
+  serviceGstRate?: number;
+  commissionGst?: number;
+  deliveryGst?: number;
+  packagingGst?: number;
+  codGst?: number;
+  platformGst?: number;
+  totalGst?: number;
+  taxableAmount?: number;
+  payableAmount?: number;
+  commissionRate?: number;
+  commission?: number;
+  paymentMethod?: string | null;
+  codCharges?: number;
+  createdAt?: string | number;
+  updatedAt?: string | number | null;
+};
+
 export type DeliveryPartnerOrder = {
   id: string;
   orderId: string;
@@ -31,6 +60,7 @@ export type DeliveryPartnerOrder = {
   updatedBy: string | null;
   updatedAt: string | null;
   orderDetails: DeliveryPartnerOrderDetails | null;
+  finance: OrderFinance | null;
   shopDetails: DeliveryPartnerShopDetails | null;
 };
 
@@ -250,6 +280,7 @@ const normalizePartnerOrder = (order: any): DeliveryPartnerOrder => ({
   createdBy: order?.createdBy ? String(order.createdBy) : null,
   updatedBy: order?.updatedBy ? String(order.updatedBy) : null,
   updatedAt: order?.updatedAt ? String(order.updatedAt) : null,
+  finance: order?.orderDetails?.finance || null,
   orderDetails: order?.orderDetails
     ? {
         orderId: String(order.orderDetails?.orderId ?? order?.orderId ?? ''),
@@ -469,6 +500,8 @@ const getAssignedOrdersByPartnerId = async (
       validateStatus: status => status >= 200 && status < 400,
     }),
   );
+
+  console.log('Raw API response for assigned orders:', data);
 
   if (Array.isArray(data?.content)) {
     return data.content.map(normalizePartnerOrder);
