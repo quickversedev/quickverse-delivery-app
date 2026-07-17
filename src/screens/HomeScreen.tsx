@@ -13,6 +13,8 @@ import {
   Linking,
   Platform,
   AppState,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -41,6 +43,9 @@ import { promptForEnableLocationIfNeeded } from 'react-native-android-location-e
 import { ChevronDown, ChevronUp } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle as SvgCircle } from 'react-native-svg';
+import DateTimePicker, {
+  DateTimePickerEvent,
+} from '@react-native-community/datetimepicker';
 
 type RootStackParamList = {
   MainTabs: undefined;
@@ -355,6 +360,35 @@ const liveTimerStyles = StyleSheet.create({
   },
 });
 
+/**
+ * Payment-type classification used both for filtering the order history list
+ * and for rendering the payment label on each order card. Kept as a single
+ * source of truth so the filter chips and the card UI can never disagree.
+ */
+type PaymentTypeKey = 'prepaid' | 'codCash' | 'codQrCode';
+
+const PAYMENT_TYPE_LABELS: Record<PaymentTypeKey, string> = {
+  prepaid: 'PREPAID',
+  codQrCode: 'QR CODE',
+  codCash: 'CASH',
+};
+
+const getOrderPaymentType = (order: DeliveryPartnerOrder): PaymentTypeKey => {
+  const isPaymentProofProvided = !!order?.orderDetails?.paymentProofURLImageUrl;
+
+  const isPrepaidOrder =
+    order?.finance?.paymentMethod?.toLowerCase() === 'prepaid';
+
+  if (isPrepaidOrder) return 'prepaid';
+
+  if (isPaymentProofProvided) return 'codQrCode';
+
+  const paymentMethod =
+    order?.orderDetails?.paymentMethod ?? order?.paymentMethod ?? '';
+
+  return paymentMethod === 'QR_CODE' ? 'codQrCode' : 'codCash';
+};
+
 const HomeScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const navigation =
@@ -379,8 +413,14 @@ const HomeScreen: React.FC = () => {
   const [statsFilter, setStatsFilter] = useState<
     'daily' | 'weekly' | 'monthly' | 'allTime'
   >('daily');
+  // NOTE: 'custom' added here — this filter (and only this filter) is
+  // exclusive to the Orders tab. The Dashboard tab's `statsFilter` above is
+  // untouched and intentionally has no custom option.
   const [timeRangeFilter, setTimeRangeFilter] = useState<
-    'all' | 'today' | 'week' | 'month'
+    'all' | 'today' | 'week' | 'month' | 'custom'
+  >('all');
+  const [paymentTypeFilter, setPaymentTypeFilter] = useState<
+    'all' | PaymentTypeKey
   >('all');
   const [expandedOrderIds, setExpandedOrderIds] = useState<Set<string>>(
     new Set(),
@@ -471,7 +511,14 @@ const HomeScreen: React.FC = () => {
     setOrdersError(null);
     try {
       const response =
-        await deliveryPartnerService.getAssignedOrdersByPartnerId(partnerId);
+        await deliveryPartnerService.getAssignedOrdersByPartnerId(
+          partnerId,
+          // The polled "all" list backs Today/Week/Month/Live client-side —
+          // it deliberately never sends 'custom' here, that has its own
+          // fetch path below (fetchCustomOrders) so it never disturbs this
+          // polling loop.
+          'all',
+        );
       setOrders(getUniqueLatestOrders(response));
     } catch (error) {
       console.error('Fetch assigned orders failed', error);
@@ -486,6 +533,9 @@ const HomeScreen: React.FC = () => {
     setIsOrdersRefreshing(true);
     try {
       await fetchAssignedOrders({ silent: true });
+      if (timeRangeFilter === 'custom' && customStart && customEnd) {
+        await fetchCustomOrders(customStart, customEnd);
+      }
     } finally {
       setIsOrdersRefreshing(false);
     }
@@ -503,6 +553,46 @@ const HomeScreen: React.FC = () => {
       console.error('Fetch partner stats failed', error);
     } finally {
       setIsStatsLoading(false);
+    }
+  };
+
+  // ---- Custom date-range order fetch --------------------------------------
+  // Kept entirely separate from `orders` / fetchAssignedOrders on purpose:
+  // Today/Week/Month/Live orders rely on the polled "all" list and filter it
+  // client-side. A custom range can span further back than that list covers,
+  // so it hits the backend's fromDate/toDate params directly and stores its
+  // results independently — this way a slow/failed custom fetch can never
+  // affect the existing polling loop or the other filters.
+  const [customOrders, setCustomOrders] = useState<DeliveryPartnerOrder[]>([]);
+  const [isCustomOrdersLoading, setIsCustomOrdersLoading] = useState(false);
+  const [customOrdersError, setCustomOrdersError] = useState<string | null>(
+    null,
+  );
+
+  const toApiDateString = (date: Date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
+  const fetchCustomOrders = async (start: Date, end: Date) => {
+    if (!partnerId) return;
+    setIsCustomOrdersLoading(true);
+    setCustomOrdersError(null);
+    try {
+      const response =
+        await deliveryPartnerService.getAssignedOrdersByPartnerId(
+          partnerId,
+          'custom',
+          { fromDate: toApiDateString(start), toDate: toApiDateString(end) },
+        );
+      setCustomOrders(getUniqueLatestOrders(response));
+    } catch (error) {
+      console.error('Fetch custom range orders failed', error);
+      setCustomOrdersError('Unable to load orders for this date range.');
+    } finally {
+      setIsCustomOrdersLoading(false);
     }
   };
 
@@ -631,13 +721,6 @@ const HomeScreen: React.FC = () => {
   const isOrderLive = (o: DeliveryPartnerOrder) =>
     LIVE_INNER_STATES.includes(o.orderDetails?.state?.toUpperCase() ?? '');
 
-  const clearOrders = orders.filter(o => o.orderStatus !== 'UNASSIGNED');
-  const liveOrders = clearOrders.filter(isOrderLive);
-  const liveOrderIds = new Set(liveOrders.map(o => o.id || o.orderId));
-  const pastOrders = clearOrders.filter(
-    o => !liveOrderIds.has(o.id || o.orderId),
-  );
-
   const getTimeRangeCutoff = (range: 'today' | 'week' | 'month'): number => {
     const now = new Date();
     if (range === 'today') {
@@ -659,14 +742,50 @@ const HomeScreen: React.FC = () => {
     return new Date(now.getFullYear(), now.getMonth(), 1).getTime();
   };
 
+  // ---- Orders tab pipeline -------------------------------------------------
+  // clearOrders: everything except UNASSIGNED.
+  // liveOrders: currently in-flight deliveries. These are ALWAYS shown in
+  //   full and are intentionally NOT affected by timeRangeFilter or
+  //   paymentTypeFilter — an active delivery is "current work", not
+  //   "history", so filtering it out by date/payment would be wrong (and
+  //   could hide an order you're actively supposed to be delivering).
+  // pastOrders -> timeFilteredOrders -> filteredOrders: history list.
+  //   Today/Week/Month filter the polled "all" list client-side (unchanged
+  //   behavior). Custom instead sources from `customOrders`, which comes
+  //   from its own backend fromDate/toDate fetch (fetchCustomOrders) since a
+  //   custom range can exceed what the polled "all" list already contains.
+  //   Either way, the payment type filter is then applied on top, same as
+  //   before.
+  const clearOrders = orders.filter(o => o.orderStatus !== 'UNASSIGNED');
+  const liveOrders = clearOrders.filter(isOrderLive);
+  const liveOrderIds = new Set(liveOrders.map(o => o.id || o.orderId));
+
+  const pastOrders = clearOrders.filter(
+    o => !liveOrderIds.has(o.id || o.orderId),
+  );
+
+  const customPastOrders = customOrders.filter(
+    o =>
+      o.orderStatus !== 'UNASSIGNED' &&
+      !isOrderLive(o) &&
+      !liveOrderIds.has(o.id || o.orderId),
+  );
+
   const timeFilteredOrders =
     timeRangeFilter === 'all'
       ? pastOrders
+      : timeRangeFilter === 'custom'
+      ? customPastOrders
       : pastOrders.filter(
           o => getOrderEpochMs(o) >= getTimeRangeCutoff(timeRangeFilter),
         );
 
-  const filteredOrders = timeFilteredOrders;
+  const filteredOrders =
+    paymentTypeFilter === 'all'
+      ? timeFilteredOrders
+      : timeFilteredOrders.filter(
+          o => getOrderPaymentType(o) === paymentTypeFilter,
+        );
 
   const formatStatusLabel = (status: string) =>
     status
@@ -795,6 +914,269 @@ const HomeScreen: React.FC = () => {
     });
   };
 
+  /** Format a Date as "DD MMM YYYY" for display */
+  const formatDateLabel = (date: Date) =>
+    date.toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
+
+  const [isCustomModalVisible, setIsCustomModalVisible] = React.useState(false);
+  // Drafts shown inside the modal before confirming
+  const [draftStart, setDraftStart] = React.useState<Date>(new Date());
+  const [draftEnd, setDraftEnd] = React.useState<Date>(new Date());
+  // Confirmed custom range sent to the API
+  const [customStart, setCustomStart] = React.useState<Date | null>(null);
+  const [customEnd, setCustomEnd] = React.useState<Date | null>(null);
+  // Which picker is currently shown on Android (one at a time)
+  const [androidPicker, setAndroidPicker] = React.useState<
+    'start' | 'end' | null
+  >(null);
+
+  const openCustomModal = () => {
+    // Pre-fill drafts with last confirmed range or today
+    setDraftStart(customStart ?? new Date());
+    setDraftEnd(customEnd ?? new Date());
+    setIsCustomModalVisible(true);
+  };
+
+  const confirmCustomRange = () => {
+    setCustomStart(draftStart);
+    setCustomEnd(draftEnd);
+    setTimeRangeFilter('custom');
+    setIsCustomModalVisible(false);
+    fetchCustomOrders(draftStart, draftEnd);
+  };
+
+  const handleFilterPress = (id: any) => {
+    if (id === 'custom') {
+      openCustomModal();
+    } else {
+      setTimeRangeFilter(id);
+      // Clear custom range so stale dates don't persist if user switches back
+      setCustomStart(null);
+      setCustomEnd(null);
+      setCustomOrdersError(null);
+    }
+  };
+
+  // Android: show pickers sequentially (start → end)
+  const handleAndroidDateChange = (
+    event: DateTimePickerEvent,
+    selected?: Date,
+  ) => {
+    if (event.type === 'dismissed') {
+      setAndroidPicker(null);
+      return;
+    }
+    if (androidPicker === 'start') {
+      setDraftStart(selected ?? draftStart);
+      setAndroidPicker('end'); // immediately open end picker
+    } else if (androidPicker === 'end') {
+      setDraftEnd(selected ?? draftEnd);
+      setAndroidPicker(null);
+    }
+  };
+
+  // ── Custom date range modal ──
+  const renderCustomDateModal = () => {
+    const isValidRange = draftStart <= draftEnd;
+
+    return (
+      <Modal
+        visible={isCustomModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsCustomModalVisible(false)}
+      >
+        <Pressable
+          style={styles.modalBackdrop}
+          onPress={() => setIsCustomModalVisible(false)}
+        >
+          <Pressable style={styles.customModalCard} onPress={() => null}>
+            {/* Header */}
+            <View style={styles.customModalHeader}>
+              {/* <MaterialCommunityIcons
+                name="calendar-range"
+                size={20}
+                color="#0f62fe"
+              /> */}
+              <Text style={styles.customModalTitle}>Select Date Range</Text>
+              <TouchableOpacity
+                onPress={() => setIsCustomModalVisible(false)}
+                hitSlop={8}
+              >
+                {/* <MaterialCommunityIcons
+                  name="close"
+                  size={20}
+                  color="#64748b"
+                /> */}
+              </TouchableOpacity>
+            </View>
+
+            {/* Date rows */}
+            {Platform.OS === 'ios' ? (
+              // iOS: show both pickers inline
+              <>
+                <View style={styles.datePickerRow}>
+                  <View style={styles.datePickerLabelCol}>
+                    {/* <MaterialCommunityIcons
+                      name="calendar-start"
+                      size={16}
+                      color="#0f62fe"
+                    /> */}
+                    <Text style={styles.datePickerLabel}>Start Date</Text>
+                  </View>
+                  <DateTimePicker
+                    value={draftStart}
+                    mode="date"
+                    display="compact"
+                    maximumDate={draftEnd}
+                    onChange={(_e, date) => date && setDraftStart(date)}
+                    style={styles.datePickerIOS}
+                  />
+                </View>
+
+                <View style={styles.datePickerDivider} />
+
+                <View style={styles.datePickerRow}>
+                  <View style={styles.datePickerLabelCol}>
+                    {/* <MaterialCommunityIcons
+                      name="calendar-end"
+                      size={16}
+                      color="#0f62fe"
+                    /> */}
+                    <Text style={styles.datePickerLabel}>End Date</Text>
+                  </View>
+                  <DateTimePicker
+                    value={draftEnd}
+                    mode="date"
+                    display="compact"
+                    minimumDate={draftStart}
+                    maximumDate={new Date()}
+                    onChange={(_e, date) => date && setDraftEnd(date)}
+                    style={styles.datePickerIOS}
+                  />
+                </View>
+              </>
+            ) : (
+              // Android: tappable date buttons that open the native picker
+              <>
+                <TouchableOpacity
+                  style={styles.datePickerRow}
+                  onPress={() => setAndroidPicker('start')}
+                >
+                  <View style={styles.datePickerLabelCol}>
+                    {/* <MaterialCommunityIcons
+                      name="calendar-start"
+                      size={16}
+                      color="#0f62fe"
+                    /> */}
+                    <Text style={styles.datePickerLabel}>Start Date</Text>
+                  </View>
+                  <View style={styles.androidDateChip}>
+                    <Text style={styles.androidDateChipText}>
+                      {formatDateLabel(draftStart)}
+                    </Text>
+                    {/* <MaterialCommunityIcons
+                      name="chevron-down"
+                      size={16}
+                      color="#0f62fe"
+                    /> */}
+                  </View>
+                </TouchableOpacity>
+
+                <View style={styles.datePickerDivider} />
+
+                <TouchableOpacity
+                  style={styles.datePickerRow}
+                  onPress={() => setAndroidPicker('end')}
+                >
+                  <View style={styles.datePickerLabelCol}>
+                    {/* <MaterialCommunityIcons
+                      name="calendar-end"
+                      size={16}
+                      color="#0f62fe"
+                    /> */}
+                    <Text style={styles.datePickerLabel}>End Date</Text>
+                  </View>
+                  <View style={styles.androidDateChip}>
+                    <Text style={styles.androidDateChipText}>
+                      {formatDateLabel(draftEnd)}
+                    </Text>
+                    {/* <MaterialCommunityIcons
+                      name="chevron-down"
+                      size={16}
+                      color="#0f62fe"
+                    /> */}
+                  </View>
+                </TouchableOpacity>
+
+                {/* Native Android picker rendered outside the modal UI */}
+                {androidPicker !== null && (
+                  <DateTimePicker
+                    value={androidPicker === 'start' ? draftStart : draftEnd}
+                    mode="date"
+                    display="default"
+                    maximumDate={
+                      androidPicker === 'start' ? draftEnd : new Date()
+                    }
+                    minimumDate={
+                      androidPicker === 'end' ? draftStart : undefined
+                    }
+                    onChange={handleAndroidDateChange}
+                  />
+                )}
+              </>
+            )}
+
+            {/* Validation hint */}
+            {!isValidRange && (
+              <Text style={styles.dateValidationError}>
+                Start date must be on or before end date.
+              </Text>
+            )}
+
+            {/* Preview chip */}
+            {isValidRange && (
+              <View style={styles.datePreviewChip}>
+                {/* <MaterialCommunityIcons
+                  name="calendar-check"
+                  size={14}
+                  color="#0f62fe"
+                /> */}
+                <Text style={styles.datePreviewText}>
+                  {formatDateLabel(draftStart)} → {formatDateLabel(draftEnd)}
+                </Text>
+              </View>
+            )}
+
+            {/* Actions */}
+            <View style={styles.customModalActions}>
+              <TouchableOpacity
+                style={styles.customModalCancelBtn}
+                onPress={() => setIsCustomModalVisible(false)}
+              >
+                <Text style={styles.customModalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.customModalApplyBtn,
+                  !isValidRange && styles.customModalApplyBtnDisabled,
+                ]}
+                disabled={!isValidRange}
+                onPress={confirmCustomRange}
+              >
+                <Text style={styles.customModalApplyText}>Apply Range</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    );
+  };
+
   const renderOrderCard = (order: DeliveryPartnerOrder) => {
     const cardId = order.id || order.orderId;
     const isExpanded = expandedOrderIds.has(cardId);
@@ -816,12 +1198,14 @@ const HomeScreen: React.FC = () => {
         'UNKNOWN',
     );
     const shopId = order.orderDetails?.shopId ?? order.shopId;
-    const paymentMethod =
-      order.orderDetails?.paymentMethod ?? order.paymentMethod ?? 'N/A';
+
     const customerMobile = order.orderDetails?.customerMobile ?? 'N/A';
     const customerAddress = parseCustomerAddress(
       order.orderDetails?.customerAddress ?? null,
     );
+
+    const finalPaymentMethod = PAYMENT_TYPE_LABELS[getOrderPaymentType(order)];
+
     const customerCoordinate =
       customerAddress.latitude != null && customerAddress.longitude != null
         ? {
@@ -899,7 +1283,8 @@ const HomeScreen: React.FC = () => {
               #{order.orderId || order.id}
             </Text>
             <Text style={styles.orderCardSummary}>
-              {shopName} · {formatCurrency(order?.finance?.payableAmount || computedTotal)}
+              {shopName} ·{' '}
+              {formatCurrency(order?.finance?.payableAmount || computedTotal)}
             </Text>
           </View>
           <View style={styles.orderCardHeaderRight}>
@@ -1025,7 +1410,7 @@ const HomeScreen: React.FC = () => {
               )}
               <View style={styles.orderMetaRow}>
                 <Text style={styles.orderMetaLabel}>Payment</Text>
-                <Text style={styles.orderMetaValue}>{paymentMethod}</Text>
+                <Text style={styles.orderMetaValue}>{finalPaymentMethod}</Text>
               </View>
             </View>
             <BillSummaryCard
@@ -1129,13 +1514,23 @@ const HomeScreen: React.FC = () => {
   };
 
   const statsFilterOptions: {
-    key: 'daily' | 'weekly' | 'monthly' | 'allTime';
+    key: 'daily' | 'weekly' | 'monthly' | 'allTime' | 'custom';
     label: string;
   }[] = [
     { key: 'daily', label: 'Today' },
     { key: 'weekly', label: 'This Week' },
     { key: 'monthly', label: 'This Month' },
     { key: 'allTime', label: 'All Time' },
+  ];
+
+  const paymentTypeFilterOptions: {
+    key: 'all' | PaymentTypeKey;
+    label: string;
+  }[] = [
+    { key: 'all', label: 'All' },
+    { key: 'prepaid', label: 'Prepaid' },
+    { key: 'codCash', label: 'Cash' },
+    { key: 'codQrCode', label: 'QR Code' },
   ];
 
   const activeStatsData =
@@ -1303,7 +1698,7 @@ const HomeScreen: React.FC = () => {
                     styles.filterChip,
                     statsFilter === item.key && styles.filterChipActive,
                   ]}
-                  onPress={() => setStatsFilter(item.key)}
+                  onPress={() => setStatsFilter(item.key as any)}
                   activeOpacity={0.8}
                 >
                   <Text
@@ -1528,45 +1923,110 @@ const HomeScreen: React.FC = () => {
                     order={order}
                   />
                 ))}
+
                 {pastOrders.length > 0 && (
                   <Text style={styles.pastOrdersHeading}>Order History</Text>
                 )}
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  style={styles.filterRow}
-                  contentContainerStyle={styles.filterRowContent}
-                >
-                  {(
-                    [
-                      { key: 'all', label: 'All' },
-                      { key: 'today', label: 'Today' },
-                      { key: 'week', label: 'This Week' },
-                      { key: 'month', label: 'This Month' },
-                    ] as const
-                  ).map(item => (
+
+                {pastOrders.length > 0 && (
+                  <>
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      style={styles.filterRow}
+                      contentContainerStyle={styles.filterRowContent}
+                    >
+                      {(
+                        [
+                          { key: 'all', label: 'All' },
+                          { key: 'today', label: 'Today' },
+                          { key: 'week', label: 'This Week' },
+                          { key: 'month', label: 'This Month' },
+                          { key: 'custom', label: 'Custom' },
+                        ] as const
+                      ).map(item => (
+                        <TouchableOpacity
+                          key={item.key}
+                          style={[
+                            styles.filterChip,
+                            timeRangeFilter === item.key &&
+                              styles.filterChipActive,
+                          ]}
+                          onPress={() => handleFilterPress(item.key)}
+                          activeOpacity={0.8}
+                        >
+                          <Text
+                            style={[
+                              styles.filterChipText,
+                              timeRangeFilter === item.key &&
+                                styles.filterChipTextActive,
+                            ]}
+                          >
+                            {item.key === 'custom' && customStart && customEnd
+                              ? `${formatDateLabel(
+                                  customStart,
+                                )} - ${formatDateLabel(customEnd)}`
+                              : item.label}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      style={styles.filterRow}
+                      contentContainerStyle={styles.filterRowContent}
+                    >
+                      {paymentTypeFilterOptions.map(item => (
+                        <TouchableOpacity
+                          key={item.key}
+                          style={[
+                            styles.filterChip,
+                            paymentTypeFilter === item.key &&
+                              styles.filterChipActive,
+                          ]}
+                          onPress={() => setPaymentTypeFilter(item.key)}
+                          activeOpacity={0.8}
+                        >
+                          <Text
+                            style={[
+                              styles.filterChipText,
+                              paymentTypeFilter === item.key &&
+                                styles.filterChipTextActive,
+                            ]}
+                          >
+                            {item.label}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </>
+                )}
+
+                {timeRangeFilter === 'custom' && isCustomOrdersLoading ? (
+                  <View style={styles.ordersStateWrap}>
+                    <ActivityIndicator size="small" color="#0E6DFD" />
+                    <Text style={styles.sectionText}>
+                      Loading orders for selected range...
+                    </Text>
+                  </View>
+                ) : timeRangeFilter === 'custom' && customOrdersError ? (
+                  <View style={styles.ordersStateWrap}>
+                    <Text style={styles.errorText}>{customOrdersError}</Text>
                     <TouchableOpacity
-                      key={item.key}
-                      style={[
-                        styles.filterChip,
-                        timeRangeFilter === item.key && styles.filterChipActive,
-                      ]}
-                      onPress={() => setTimeRangeFilter(item.key)}
+                      style={styles.retryButton}
+                      onPress={() =>
+                        customStart &&
+                        customEnd &&
+                        fetchCustomOrders(customStart, customEnd)
+                      }
                       activeOpacity={0.8}
                     >
-                      <Text
-                        style={[
-                          styles.filterChipText,
-                          timeRangeFilter === item.key &&
-                            styles.filterChipTextActive,
-                        ]}
-                      >
-                        {item.label}
-                      </Text>
+                      <Text style={styles.retryButtonText}>Retry</Text>
                     </TouchableOpacity>
-                  ))}
-                </ScrollView>
-                {filteredOrders.length === 0 ? (
+                  </View>
+                ) : filteredOrders.length === 0 ? (
                   <Text style={styles.sectionText}>
                     No orders match this filter.
                   </Text>
@@ -1593,6 +2053,7 @@ const HomeScreen: React.FC = () => {
         onSubmit={handleOtpSubmit}
         onCancel={handleOtpCancel}
       />
+      {renderCustomDateModal()}
     </View>
   );
 };
@@ -2230,6 +2691,7 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
     elevation: 5,
+    marginBottom: 16,
   },
   livePulseRow: {
     flexDirection: 'row',
@@ -2412,6 +2874,130 @@ const styles = StyleSheet.create({
     backgroundColor: '#E2E8F0',
     marginHorizontal: 2,
     marginBottom: 14,
+  },
+  // ── Custom date modal ──────────────────────────────────────────────────────
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.45)',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  customModalCard: {
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 10,
+  },
+  customModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 20,
+  },
+  customModalTitle: {
+    flex: 1,
+    fontSize: 16,
+    color: '#0f172a',
+    fontFamily: FONT_FAMILY.outfitBold,
+  },
+  datePickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+  },
+  datePickerLabelCol: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  datePickerLabel: {
+    fontSize: 14,
+    color: '#334155',
+    fontFamily: FONT_FAMILY.bricolageMedium,
+  },
+  datePickerIOS: {
+    // compact spinner; width is auto on iOS
+  },
+  datePickerDivider: {
+    height: 1,
+    backgroundColor: '#e2e8f0',
+    marginVertical: 2,
+  },
+  androidDateChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#eff6ff',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+  },
+  androidDateChipText: {
+    fontSize: 13,
+    color: '#0f62fe',
+    fontFamily: FONT_FAMILY.bricolageMedium,
+  },
+  dateValidationError: {
+    marginTop: 10,
+    fontSize: 12,
+    color: '#dc2626',
+    fontFamily: FONT_FAMILY.bricolageRegular,
+    textAlign: 'center',
+  },
+  datePreviewChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'center',
+    marginTop: 14,
+    backgroundColor: '#eff6ff',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  datePreviewText: {
+    fontSize: 13,
+    color: '#0f62fe',
+    fontFamily: FONT_FAMILY.bricolageMedium,
+  },
+  customModalActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 20,
+  },
+  customModalCancelBtn: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: '#f1f5f9',
+  },
+  customModalCancelText: {
+    fontSize: 14,
+    color: '#475569',
+    fontFamily: FONT_FAMILY.outfitBold,
+  },
+  customModalApplyBtn: {
+    flex: 2,
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: '#0f62fe',
+  },
+  customModalApplyBtnDisabled: {
+    backgroundColor: '#93c5fd',
+  },
+  customModalApplyText: {
+    fontSize: 14,
+    color: '#ffffff',
+    fontFamily: FONT_FAMILY.outfitBold,
   },
 });
 

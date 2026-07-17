@@ -29,21 +29,33 @@ const EarningsScreen: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const fetchData = useCallback(async (silent = false) => {
-    if (!partnerId) { return; }
-    console.log(`[EarningsScreen] fetchData called — period=${period}, partnerId=${partnerId}`);
-    if (!silent) { setLoading(true); }
-    try {
-      const result = await earningsService.getEarningsData(partnerId, period);
-      console.log('[EarningsScreen] Mapped result:', JSON.stringify(result, null, 2));
-      setData(result);
-    } catch (err) {
-      console.warn('[EarningsScreen] Failed to fetch earnings data:', err);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [period, partnerId]);
+  const fetchData = useCallback(
+    async (silent = false) => {
+      if (!partnerId) {
+        return;
+      }
+      console.log(
+        `[EarningsScreen] fetchData called — period=${period}, partnerId=${partnerId}`,
+      );
+      if (!silent) {
+        setLoading(true);
+      }
+      try {
+        const result = await earningsService.getEarningsData(partnerId, period);
+        console.log(
+          '[EarningsScreen] Mapped result:',
+          JSON.stringify(result, null, 2),
+        );
+        setData(result);
+      } catch (err) {
+        console.warn('[EarningsScreen] Failed to fetch earnings data:', err);
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [period, partnerId],
+  );
 
   useEffect(() => {
     fetchData();
@@ -62,7 +74,9 @@ const EarningsScreen: React.FC = () => {
     );
   }
 
-  if (!data) { return null; }
+  if (!data) {
+    return null;
+  }
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -71,7 +85,11 @@ const EarningsScreen: React.FC = () => {
       <ScrollView
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#0E6DFD']} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={['#0E6DFD']}
+          />
         }
         contentContainerStyle={styles.scrollContent}
       >
@@ -102,7 +120,7 @@ const EarningsScreen: React.FC = () => {
             <CashReconciliationCard data={data.cashReconciliation} /> */}
 
             <View style={styles.spacer} />
-            <TransactionHistory data={data.transactions} />
+            {/* <TransactionHistory data={data.transactions} /> */}
           </>
         )}
 

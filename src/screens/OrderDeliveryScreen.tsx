@@ -509,7 +509,16 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
     pricing.packagingCharges +
     taxes;
 
-  const isPrepaid = order?.finance?.paymentMethod === 'PREPAID';
+  const isPrepaid = order?.finance?.paymentMethod === 'PREPAID' || null;
+
+  const paymentMethod =
+    order.orderDetails?.paymentMethod ?? order.paymentMethod ?? 'N/A';
+
+  const finalPaymentMethod = isPrepaid
+    ? 'PREPAID'
+    : paymentMode === 'ONLINE'
+    ? 'QR CODE'
+    : 'CASH';
 
   const openOrderWebView = () => {
     const url = order.orderDetails?.orderLink;
@@ -738,9 +747,7 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
         </View>
         <View style={s.rowBetween}>
           <Text style={s.rowLabel}>Payment</Text>
-          <Text style={s.rowValue}>
-            {order.orderDetails?.paymentMethod ?? order.paymentMethod ?? 'N/A'}
-          </Text>
+          <Text style={s.rowValue}>{finalPaymentMethod ?? 'N/A'}</Text>
         </View>
       </View>
 
@@ -1082,9 +1089,7 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
       </View>
       <View style={s.successRow}>
         <Text style={s.successRowLabel}>Payment</Text>
-        <Text style={s.successRowValue}>
-          {order.orderDetails?.paymentMethod ?? order.paymentMethod ?? 'N/A'}
-        </Text>
+        <Text style={s.successRowValue}>{finalPaymentMethod ?? 'N/A'}</Text>
       </View>
       <View style={[s.successRow, s.successRowLast]}>
         <Text style={s.successRowLabel}>Order Value</Text>

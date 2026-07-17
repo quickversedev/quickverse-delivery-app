@@ -96,6 +96,7 @@ export type DeliveryPartnerOrderDetails = {
   orderDescription: string | null;
   orderLink: string | null;
   paymentMethod: string | null;
+  paymentProofURLImageUrl: string | null;
 };
 
 export type DeliveryPartnerShopAddress = {
@@ -375,6 +376,9 @@ const normalizePartnerOrder = (order: any): DeliveryPartnerOrder => ({
         paymentMethod: order.orderDetails?.paymentMethod
           ? String(order.orderDetails.paymentMethod)
           : null,
+        paymentProofURLImageUrl: order.orderDetails?.paymentProofURLImageUrl
+          ? String(order.orderDetails.paymentProofURLImageUrl)
+          : null,
       }
     : null,
   shopDetails: order?.shopDetails
@@ -487,12 +491,25 @@ const normalizePartnerOrder = (order: any): DeliveryPartnerOrder => ({
 
 const getAssignedOrdersByPartnerId = async (
   partnerId: string,
+  timeRangeFilter?: 'all' | 'today' | 'week' | 'month' | 'custom',
+  customRange?: { fromDate: string; toDate: string },
 ): Promise<DeliveryPartnerOrder[]> => {
   const sessionKey = await TokenStorage.getToken();
 
+  const params: Record<string, any> = { size: 200 };
+
+  if (timeRangeFilter === 'custom' && customRange) {
+    // Backend checks fromDate/toDate before timeFilter, so timeFilter is
+    // omitted here — no need to send both.
+    params.fromDate = customRange.fromDate;
+    params.toDate = customRange.toDate;
+  } else {
+    params.timeFilter = timeRangeFilter ?? 'all';
+  }
+
   const data = await apiCall<any>(
     axiosInstance.get(`/v1/order-master/delivery-partner/${partnerId}`, {
-      params: { size: 200 },
+      params,
       headers: {
         SessionKey: sessionKey || '',
         'Request-Origin': 'CAPTAIN',
@@ -501,20 +518,10 @@ const getAssignedOrdersByPartnerId = async (
     }),
   );
 
-  console.log('Raw API response for assigned orders:', data);
-
-  if (Array.isArray(data?.content)) {
+  if (Array.isArray(data?.content))
     return data.content.map(normalizePartnerOrder);
-  }
-
-  if (Array.isArray(data)) {
-    return data.map(normalizePartnerOrder);
-  }
-
-  if (Array.isArray(data?.data)) {
-    return data.data.map(normalizePartnerOrder);
-  }
-
+  if (Array.isArray(data)) return data.map(normalizePartnerOrder);
+  if (Array.isArray(data?.data)) return data.data.map(normalizePartnerOrder);
   return [];
 };
 
