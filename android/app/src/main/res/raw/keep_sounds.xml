@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Notification sound files are referenced only as string names inside the JS
+  bundle, which the Android resource shrinker never scans. Without this keep
+  rule, `shrinkResources true` release builds strip them and every install
+  permanently gets soundless (immutable) notification channels.
+  Not named keep.xml: the React Native gradle plugin already generates one.
+-->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@raw/noti,@raw/noti1,@raw/noti2" />

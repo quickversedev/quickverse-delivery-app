@@ -25,6 +25,7 @@ import { rehydrateAuthStore } from '../store/authStore';
 import { DeliveryPartnerOrder } from '../services/delivery-partner.service';
 import { FONT_FAMILY } from '../theme/typography';
 import LocationGuard from '../components/LocationGuard';
+import { navigationRef, onRootNavigationReady } from './NavigationHelper';
 
 type AuthStackParamList = {
   Login: undefined;
@@ -119,7 +120,7 @@ const AppNavigator: React.FC = () => {
   }
 
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef} onReady={onRootNavigationReady}>
       {isAuthenticated ? (
         <LocationGuard>
           <MainAppNavigator />

@@ -34,6 +34,20 @@
     <meta-data
   android:name="com.google.android.geo.API_KEY"
   android:value="AIzaSyBu0CGCx2_HfAJVWbsuv4vgwD2V8qiGckE"/>
+    <!-- Route FCM-auto-displayed notifications to the sounded HIGH channel.
+         tools:replace overrides the empty default the messaging library ships. -->
+    <meta-data
+      android:name="com.google.firebase.messaging.default_notification_channel_id"
+      android:value="default_channel"
+      tools:replace="android:value" />
+    <!-- White silhouette small icon + accent color (avoids white-square icon) -->
+    <meta-data
+      android:name="com.google.firebase.messaging.default_notification_icon"
+      android:resource="@drawable/ic_notification" />
+    <meta-data
+      android:name="com.google.firebase.messaging.default_notification_color"
+      android:resource="@color/notification_color"
+      tools:replace="android:resource" />
     <!-- Firebase Messaging Service -->
     <service
       android:name="io.invertase.firebase.messaging.ReactNativeFirebaseMessagingService"
