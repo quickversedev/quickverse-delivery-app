@@ -1,6 +1,7 @@
 import 'text-encoding-polyfill';
-import { Client, IMessage } from '@stomp/stompjs';
+import { Client, IMessage, StompSubscription } from '@stomp/stompjs';
 import { API_CONFIG } from './axios.config';
+import type { PoolWebSocketEvent } from '../types/pool.types';
 
 export type OrderActionEvent = {
   orderId: string;
@@ -26,8 +27,7 @@ function buildWsUrl(): string {
   const hostPath = base.replace(/^https?:\/\//, '');
   const isSecure = base.startsWith('https') || hostPath.includes('ngrok');
   const scheme = isSecure ? 'wss' : 'ws';
-  const isLocal = hostPath.startsWith('10.0.2.2') || hostPath.startsWith('localhost') || hostPath.startsWith('127.');
-  return `${scheme}://${hostPath}/${isLocal ? 'ws-raw' : 'ws/websocket'}`;
+  return `${scheme}://${hostPath}/ws/websocket`;
 }
 
 type StatusListener = (connected: boolean) => void;
@@ -124,5 +124,55 @@ function isConnected(): boolean {
   return client?.connected ?? false;
 }
 
-const websocketService = { connect, disconnect, isConnected, onStatusChange };
+// Subscribe to the global order pool topic — returns unsubscribe fn.
+// If client is not yet connected, queues the subscription for when it connects.
+function subscribeToPool(
+  callback: (event: PoolWebSocketEvent) => void,
+): () => void {
+  const topic = '/topic/orderPool';
+  let sub: StompSubscription | null = null;
+  let active = true;
+
+  const doSubscribe = () => {
+    if (!active || !client?.connected) return;
+    try {
+      sub = client.subscribe(topic, (message: IMessage) => {
+        try {
+          const event: PoolWebSocketEvent = JSON.parse(message.body);
+          callback(event);
+        } catch (e) {
+          console.error('Failed to parse pool WebSocket message', e);
+        }
+      });
+    } catch (e) {
+      console.error('Failed to subscribe to pool topic', e);
+    }
+  };
+
+  if (client?.connected) {
+    doSubscribe();
+  } else if (client) {
+    // Queue subscription once STOMP connects
+    const origOnConnect = client.onConnect;
+    client.onConnect = (frame) => {
+      origOnConnect?.(frame);
+      doSubscribe();
+    };
+  }
+
+  return () => {
+    active = false;
+    try {
+      sub?.unsubscribe();
+    } catch (_) {}
+  };
+}
+
+const websocketService = {
+  connect,
+  disconnect,
+  isConnected,
+  onStatusChange,
+  subscribeToPool,
+};
 export default websocketService;

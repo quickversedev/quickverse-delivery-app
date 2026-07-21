@@ -9,6 +9,9 @@ import EarningsScreen from './EarningsScreen';
 import OrdersScreen from './OrdersScreen';
 import RewardsScreen from './RewardsScreen';
 import LocationPermissionScreen from './LocationPermissionScreen';
+import ShiftSelectionScreen from './ShiftSelectionScreen';
+import MyShiftsScreen from './MyShiftsScreen';
+import LiveOrderPoolScreen from './LiveOrderPoolScreen';
 
 export {
   HomeScreen,
@@ -22,4 +25,7 @@ export {
   OrdersScreen,
   RewardsScreen,
   LocationPermissionScreen,
+  ShiftSelectionScreen,
+  MyShiftsScreen,
+  LiveOrderPoolScreen,
 };

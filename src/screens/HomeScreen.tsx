@@ -683,6 +683,12 @@ const HomeScreen: React.FC = () => {
       }
     }
     setIsOnline(nextStatus);
+    // Sync online status into the store so other screens (Pool tab) read the correct value
+    useAuthStore.setState(state => ({
+      partnerProfile: state.partnerProfile
+        ? { ...state.partnerProfile, isOnline: nextStatus }
+        : null,
+    }));
     setIsToggling(true);
     try {
       await deliveryPartnerService.toggleDeliveryPartnerOnlineStatus(
@@ -691,6 +697,11 @@ const HomeScreen: React.FC = () => {
       );
     } catch (error) {
       setIsOnline(!nextStatus);
+      useAuthStore.setState(state => ({
+        partnerProfile: state.partnerProfile
+          ? { ...state.partnerProfile, isOnline: !nextStatus }
+          : null,
+      }));
       console.log('Toggle online status failed', error);
       Alert.alert(
         'Status update failed',
