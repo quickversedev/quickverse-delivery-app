@@ -5,7 +5,7 @@ import useAuthStore from '../hooks/useAuthStore';
 import deliveryPartnerService from '../services/delivery-partner.service';
 import { getBestEffortCurrentLocation } from '../utils/location';
 
-const LOCATION_SYNC_INTERVAL_MS = 60000;
+const LOCATION_SYNC_INTERVAL_MS = 20000;
 
 const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 

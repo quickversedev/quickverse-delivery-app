@@ -141,6 +141,7 @@ async function updateDeviceRegistry(
     axiosInstance.post('/quickVerse/v1/updateDeviceRegistry', body, {
       headers: {
         SessionKey: sessionKey || '',
+        phone,
       },
     }),
   );

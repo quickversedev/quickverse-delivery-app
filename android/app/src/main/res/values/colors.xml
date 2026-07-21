@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Accent color applied to notification icon/title (matches app primary). -->
+    <color name="notification_color">#0E6DFD</color>
+</resources>

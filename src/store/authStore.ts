@@ -282,6 +282,15 @@ export const useAuthStore = create<AuthStoreState>()(() => ({
     try {
       await authService.signOut().catch(() => undefined);
     } finally {
+      // Invalidate the FCM token so this device stops receiving pushes once
+      // logged out. Best-effort — a failure here must not block logout.
+      try {
+        const messaging = require('@react-native-firebase/messaging').default;
+        await messaging().deleteToken();
+      } catch (error) {
+        console.warn('[Auth] Failed to delete FCM token on logout:', error);
+      }
+
       // Clear data out completely across all namespaces concurrently
       await Promise.all([
         TokenStorage.clearToken(),
