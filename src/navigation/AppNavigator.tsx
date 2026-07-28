@@ -1,8 +1,9 @@
 import React, { useEffect } from 'react';
-import { StyleSheet } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Home, Wallet, User, Zap, CalendarDays } from 'lucide-react-native';
 import {
   LoginScreen,
@@ -87,25 +88,39 @@ const renderTabIcon = (
   return <Icon size={size - 2} color={color} strokeWidth={2} />;
 };
 
-const MainTabNavigator: React.FC = () => (
-  <Tab.Navigator
-    screenOptions={({ route }) => ({
-      headerShown: false,
-      // eslint-disable-next-line react/no-unstable-nested-components
-      tabBarIcon: ({ color, size }) => renderTabIcon(route, color, size),
-      tabBarLabel: TAB_LABELS[route.name],
-      tabBarActiveTintColor: '#1A6BFF',
-      tabBarInactiveTintColor: '#94A3B8',
-      tabBarLabelStyle: styles.tabLabel,
-      tabBarStyle: styles.tabBar,
-    })}>
-    <Tab.Screen name="HomeTab" component={HomeScreen} />
-    <Tab.Screen name="PoolTab" component={LiveOrderPoolScreen} />
-    <Tab.Screen name="ShiftsTab" component={ShiftSelectionScreen} />
-    <Tab.Screen name="EarningsTab" component={EarningsScreen} />
-    <Tab.Screen name="ProfileTab" component={ProfileScreen} />
-  </Tab.Navigator>
-);
+const TAB_BAR_HEIGHT = 56;
+
+const MainTabNavigator: React.FC = () => {
+  const insets = useSafeAreaInsets();
+  const bottomInset =
+    Platform.OS === 'android' ? Math.max(insets.bottom, 16) : insets.bottom;
+
+  return (
+    <Tab.Navigator
+      screenOptions={({ route }) => ({
+        headerShown: false,
+        // eslint-disable-next-line react/no-unstable-nested-components
+        tabBarIcon: ({ color, size }) => renderTabIcon(route, color, size),
+        tabBarLabel: TAB_LABELS[route.name],
+        tabBarActiveTintColor: '#1A6BFF',
+        tabBarInactiveTintColor: '#94A3B8',
+        tabBarLabelStyle: styles.tabLabel,
+        tabBarStyle: [
+          styles.tabBar,
+          {
+            height: TAB_BAR_HEIGHT + bottomInset,
+            paddingBottom: bottomInset,
+          },
+        ],
+      })}>
+      <Tab.Screen name="HomeTab" component={HomeScreen} />
+      <Tab.Screen name="PoolTab" component={LiveOrderPoolScreen} />
+      <Tab.Screen name="ShiftsTab" component={ShiftSelectionScreen} />
+      <Tab.Screen name="EarningsTab" component={EarningsScreen} />
+      <Tab.Screen name="ProfileTab" component={ProfileScreen} />
+    </Tab.Navigator>
+  );
+};
 
 const MainAppNavigator: React.FC = () => (
   <RootStack.Navigator screenOptions={{ headerShown: false }}>
@@ -149,7 +164,6 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#E2E8F0',
     paddingTop: 6,
-    height: 60,
   },
   tabLabel: {
     fontSize: 10,
