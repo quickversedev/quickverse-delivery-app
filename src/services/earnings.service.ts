@@ -183,10 +183,10 @@ const getEarningsData = async (
       codQrAmount: bd.codQrAmount ?? 0,
       prepaidAmount: bd.prepaidAmount ?? 0,
     },
-    last7Days: (charts ?? []).map((d: {day: string; amount: number}) => ({
+    last7Days: (charts ?? []).map((d: {day: string; amount: number}, i: number, arr: any[]) => ({
       day: d.day,
       amount: d.amount,
-      isToday: ['Today', 'This Week', 'This Month'].includes(d.day),
+      isToday: i === arr.length - 1,
     })),
     breakdown: {
       basePay: bd.basePay ?? 0,

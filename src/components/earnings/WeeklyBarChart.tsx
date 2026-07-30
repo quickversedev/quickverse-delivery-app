@@ -9,12 +9,14 @@ type Props = { data: DailyEarning[]; title?: string };
 const CHART_HEIGHT = 160;
 const BAR_RADIUS = 6;
 const VALUE_HEIGHT = 18;
+const PAD_H = 20;
 
 const WeeklyBarChart: React.FC<Props> = ({ data, title }) => {
   const screenWidth = Dimensions.get('window').width;
   const chartWidth = screenWidth - 64;
-  const barWidth = Math.min(28, (chartWidth - (data.length - 1) * 8) / data.length);
-  const gap = (chartWidth - barWidth * data.length) / (data.length - 1);
+  const barsWidth = chartWidth - PAD_H * 2;
+  const barWidth = Math.min(28, (barsWidth - (data.length - 1) * 8) / data.length);
+  const gap = (barsWidth - barWidth * data.length) / Math.max(data.length - 1, 1);
 
   const maxAmount = Math.max(...data.map(d => d.amount), 1);
   const svgHeight = CHART_HEIGHT + VALUE_HEIGHT;
@@ -24,23 +26,23 @@ const WeeklyBarChart: React.FC<Props> = ({ data, title }) => {
       <Text style={styles.title}>{title || 'LAST 7 DAYS EARNINGS'}</Text>
 
       <View style={styles.chartContainer}>
-        <Svg width={chartWidth} height={svgHeight}>
+        <Svg width={chartWidth} height={svgHeight} style={{overflow: 'visible'}}>
           {data.map((d, i) => {
             const barHeight = (d.amount / maxAmount) * CHART_HEIGHT * 0.85;
-            const x = i * (barWidth + gap);
-            const y = svgHeight - barHeight - VALUE_HEIGHT + VALUE_HEIGHT;
+            const x = PAD_H + i * (barWidth + gap);
+            const y = svgHeight - barHeight;
 
             return (
               <React.Fragment key={d.day}>
                 <SvgText
                   x={x + barWidth / 2}
                   y={y - 6}
-                  fontSize={10}
+                  fontSize={11}
                   fontWeight="600"
                   fill="#64748B"
                   textAnchor="middle"
                 >
-                  ₹{d.amount}
+                  {d.amount}
                 </SvgText>
                 <Rect
                   x={x}
@@ -56,10 +58,11 @@ const WeeklyBarChart: React.FC<Props> = ({ data, title }) => {
           })}
         </Svg>
 
-        <View style={[styles.labelsRow, { width: chartWidth }]}>
+        <View style={[styles.labelsRow, { width: chartWidth, paddingHorizontal: PAD_H }]}>
           {data.map((d, i) => (
             <Text
               key={d.day}
+              numberOfLines={1}
               style={[
                 styles.dayLabel,
                 { width: barWidth, marginRight: i < data.length - 1 ? gap : 0 },

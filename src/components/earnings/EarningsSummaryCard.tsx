@@ -27,7 +27,7 @@ const EarningsSummaryCard: React.FC<Props> = ({ data, period }) => {
     <View style={styles.card}>
       <View style={styles.headerRow}>
         <Text style={styles.headerLabel}>{PERIOD_LABELS[period || 'today'] || 'TOTAL EARNINGS TODAY'}</Text>
-        {data.percentageChange !== 0 && (
+        {data.percentageChange !== 0 && period !== 'lifetime' && (
           <View style={[styles.changeBadge, changePositive ? styles.badgePositive : styles.badgeNegative]}>
             <TrendingUp size={12} color={changePositive ? '#16A34A' : '#DC2626'} />
             <Text style={[styles.changeText, changePositive ? styles.changePositive : styles.changeNegative]}>
@@ -42,7 +42,6 @@ const EarningsSummaryCard: React.FC<Props> = ({ data, period }) => {
       <View style={styles.statsRow}>
         <StatItem label="Orders Done" value={String(data.ordersDone)} />
         <StatItem label="Base Pay" value={`₹${data.basePay}`} />
-        <StatItem label="Order Earnings" value={`₹${data.orderEarnings}`} />
         <StatItem label="Bonus" value={`₹${data.bonus}`} />
         <StatItem label="Tips" value={`₹${data.tips}`} />
       </View>
