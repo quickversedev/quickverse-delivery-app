@@ -11,6 +11,9 @@ export interface EarningsSummary {
   orderEarnings: number;
   bonus: number;
   tips: number;
+  codAmount: number;
+  codQrAmount: number;
+  prepaidAmount: number;
 }
 
 export interface DailyEarning {

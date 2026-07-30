@@ -4,13 +4,13 @@ import Svg, { Rect, Text as SvgText } from 'react-native-svg';
 import { FONT_FAMILY } from '../../theme/typography';
 import type { DailyEarning } from '../../types/earnings';
 
-type Props = { data: DailyEarning[] };
+type Props = { data: DailyEarning[]; title?: string };
 
 const CHART_HEIGHT = 160;
 const BAR_RADIUS = 6;
 const VALUE_HEIGHT = 18;
 
-const WeeklyBarChart: React.FC<Props> = ({ data }) => {
+const WeeklyBarChart: React.FC<Props> = ({ data, title }) => {
   const screenWidth = Dimensions.get('window').width;
   const chartWidth = screenWidth - 64;
   const barWidth = Math.min(28, (chartWidth - (data.length - 1) * 8) / data.length);
@@ -21,7 +21,7 @@ const WeeklyBarChart: React.FC<Props> = ({ data }) => {
 
   return (
     <View style={styles.card}>
-      <Text style={styles.title}>LAST 7 DAYS EARNINGS</Text>
+      <Text style={styles.title}>{title || 'LAST 7 DAYS EARNINGS'}</Text>
 
       <View style={styles.chartContainer}>
         <Svg width={chartWidth} height={svgHeight}>

@@ -7,6 +7,7 @@ const PERIODS: { key: EarningsPeriod; label: string }[] = [
   { key: 'today', label: 'Today' },
   { key: 'thisWeek', label: 'This Week' },
   { key: 'thisMonth', label: 'This Month' },
+  { key: 'lifetime', label: 'Lifetime' },
 ];
 
 type Props = {
