@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { TrendingUp } from 'lucide-react-native';
+import { TrendingUp, TrendingDown } from 'lucide-react-native';
 import { FONT_FAMILY } from '../../theme/typography';
 import type { EarningsPeriod, EarningsSummary } from '../../types/earnings';
 
@@ -29,7 +29,7 @@ const EarningsSummaryCard: React.FC<Props> = ({ data, period }) => {
         <Text style={styles.headerLabel}>{PERIOD_LABELS[period || 'today'] || 'TOTAL EARNINGS TODAY'}</Text>
         {data.percentageChange !== 0 && period !== 'lifetime' && (
           <View style={[styles.changeBadge, changePositive ? styles.badgePositive : styles.badgeNegative]}>
-            <TrendingUp size={12} color={changePositive ? '#16A34A' : '#DC2626'} />
+            {changePositive ? <TrendingUp size={12} color="#16A34A" /> : <TrendingDown size={12} color="#DC2626" />}
             <Text style={[styles.changeText, changePositive ? styles.changePositive : styles.changeNegative]}>
               {changePositive ? '+' : ''}{data.percentageChange}% {data.comparisonLabel}
             </Text>
