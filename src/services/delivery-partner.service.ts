@@ -555,20 +555,28 @@ export type TopPerformingRider = {
   deliveries: number;
   earnings: number;
   perOrderEarning: number;
+  totalAssigned: number;
+  acceptedCount: number;
+  acceptanceRate: number;
 };
 
+export type StatsPeriod = 'today' | 'week' | 'month' | 'all_time';
+
+/** Flat stats response — all fields scoped to the requested period. */
 export type DeliveryPartnerStats = {
   deliveryPartnerId: string;
-  totalOrders: number;
-  totalEarnings: number;
-  daily: { count: number; earnings: number };
-  weekly: { count: number; earnings: number };
-  monthly: { count: number; earnings: number };
+  period: string;
+  orders: number;
+  earnings: number;
+  totalAssigned: number;
+  acceptedCount: number;
+  acceptanceRate: number;
   topPerformingRiders: TopPerformingRider[];
 };
 
 const getDeliveryPartnerStats = async (
   partnerId: string,
+  period: StatsPeriod = 'today',
 ): Promise<DeliveryPartnerStats> => {
   const sessionKey = await TokenStorage.getToken();
 
@@ -578,6 +586,7 @@ const getDeliveryPartnerStats = async (
         SessionKey: sessionKey || '',
         'Request-Origin': 'CAPTAIN',
       },
+      params: { period },
       validateStatus: status => status >= 200 && status < 400,
     }),
   );
