@@ -1542,10 +1542,11 @@ const HomeScreen: React.FC = () => {
   ];
 
   // Stats cards read directly from the flat API response (period-scoped).
-  const activeOrders        = partnerStats?.orders ?? 0;
-  const activeEarnings      = partnerStats?.earnings ?? 0;
-  const activeAcceptedCount = partnerStats?.acceptedCount ?? 0;
+  const activeOrders         = partnerStats?.orders ?? 0;
+  const activeEarnings       = partnerStats?.earnings ?? 0;
+  const activeAcceptedCount  = partnerStats?.acceptedCount ?? 0;
   const activeAcceptanceRate = partnerStats?.acceptanceRate ?? 0;
+  const activeTotalAssigned  = partnerStats?.totalAssigned ?? 0;
 
   const DAILY_TARGET = 15;
   const XP_PER_ORDER = 5;
@@ -1739,6 +1740,9 @@ const HomeScreen: React.FC = () => {
                     <Text style={styles.statLabel}>Orders</Text>
                     <Text style={styles.statValue}>
                       {activeOrders}
+                    </Text>
+                    <Text style={[styles.statLabel, { fontSize: 10, marginTop: 2 }]}>
+                      {activeTotalAssigned} assigned
                     </Text>
                   </View>
                   <View style={styles.statCard}>
