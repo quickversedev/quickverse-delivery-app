@@ -23,6 +23,9 @@ type EarningsApiResponse = {
       orderEarnings: number;
       bonus: number;
       tips: number;
+      codAmount: number;
+      codQrAmount: number;
+      prepaidAmount: number;
     };
   };
   charts: Array<{
@@ -49,14 +52,21 @@ const EARNINGS_FILTER_MAP: Record<EarningsPeriod, string> = {
   today: 'today',
   thisWeek: 'this_week',
   thisMonth: 'this_month',
-  lifetime: 'this_month',
+  lifetime: 'lifetime',
 };
 
 const ORDER_HISTORY_FILTER_MAP: Record<EarningsPeriod, string> = {
   today: 'today',
   thisWeek: 'this_week',
   thisMonth: 'this_month',
-  lifetime: 'this_month',
+  lifetime: 'lifetime',
+};
+
+const COMPARISON_LABELS: Record<EarningsPeriod, string> = {
+  today: 'vs yesterday',
+  thisWeek: 'vs last week',
+  thisMonth: 'vs last month',
+  lifetime: 'all time',
 };
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -105,7 +115,7 @@ const getEarningsData = async (
   const orderFilter = ORDER_HISTORY_FILTER_MAP[period];
   const headers = {
     SessionKey: sessionKey || '',
-    'Request-Origin': 'CAPTAIN',
+    'Request-Origin': 'TRANSPORTER',
   };
   const validateStatus = (status: number) => status >= 200 && status < 400;
 
@@ -163,17 +173,20 @@ const getEarningsData = async (
     summary: {
       totalEarnings: earningsSummary.totalEarnings ?? 0,
       percentageChange,
-      comparisonLabel: 'vs yesterday',
+      comparisonLabel: COMPARISON_LABELS[period] || 'vs yesterday',
       ordersDone: bd.ordersDone ?? 0,
       basePay: bd.basePay ?? 0,
       orderEarnings: bd.orderEarnings ?? 0,
       bonus: bd.bonus ?? 0,
       tips: bd.tips ?? 0,
+      codAmount: bd.codAmount ?? 0,
+      codQrAmount: bd.codQrAmount ?? 0,
+      prepaidAmount: bd.prepaidAmount ?? 0,
     },
-    last7Days: (charts ?? []).map(d => ({
+    last7Days: (charts ?? []).map((d: {day: string; amount: number}, i: number, arr: any[]) => ({
       day: d.day,
       amount: d.amount,
-      isToday: ['Today', 'This Week', 'This Month'].includes(d.day),
+      isToday: i === arr.length - 1,
     })),
     breakdown: {
       basePay: bd.basePay ?? 0,
