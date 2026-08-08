@@ -6,6 +6,7 @@ import {
   ScrollView,
   ActivityIndicator,
   RefreshControl,
+  TouchableOpacity,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FONT_FAMILY } from '../theme/typography';
@@ -28,6 +29,7 @@ const EarningsScreen: React.FC = () => {
   const [data, setData] = useState<EarningsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState(false);
 
   const fetchData = useCallback(
     async (silent = false) => {
@@ -47,8 +49,10 @@ const EarningsScreen: React.FC = () => {
           JSON.stringify(result, null, 2),
         );
         setData(result);
+        setError(false);
       } catch (err) {
         console.warn('[EarningsScreen] Failed to fetch earnings data:', err);
+        setError(true);
       } finally {
         setLoading(false);
         setRefreshing(false);
@@ -70,6 +74,22 @@ const EarningsScreen: React.FC = () => {
     return (
       <View style={[styles.center, { paddingTop: insets.top }]}>
         <ActivityIndicator size="large" color="#0E6DFD" />
+      </View>
+    );
+  }
+
+  if (error && !data) {
+    return (
+      <View style={[styles.center, { paddingTop: insets.top }]}>
+        <Text style={{ fontSize: 15, fontFamily: FONT_FAMILY.outfitBold, color: '#64748B', marginBottom: 12 }}>
+          Could not load earnings
+        </Text>
+        <TouchableOpacity
+          onPress={() => { setError(false); fetchData(); }}
+          style={{ backgroundColor: '#0E6DFD', paddingHorizontal: 24, paddingVertical: 10, borderRadius: 20 }}
+        >
+          <Text style={{ color: '#FFF', fontFamily: FONT_FAMILY.outfitBold, fontSize: 14 }}>Retry</Text>
+        </TouchableOpacity>
       </View>
     );
   }
@@ -101,10 +121,15 @@ const EarningsScreen: React.FC = () => {
           </View>
         ) : (
           <>
-            <EarningsSummaryCard data={data.summary} />
+            <EarningsSummaryCard data={data.summary} period={period} />
 
             <View style={styles.spacer} />
-            <WeeklyBarChart data={data.last7Days} />
+            <WeeklyBarChart data={data.last7Days} title={
+              period === 'thisWeek' ? 'WEEKLY EARNINGS' :
+              period === 'thisMonth' ? 'MONTHLY EARNINGS' :
+              period === 'lifetime' ? 'YEARLY EARNINGS' :
+              'LAST 7 DAYS EARNINGS'
+            } />
 
             {/* <View style={styles.spacer} />
             <View style={styles.sideBySide}>
@@ -120,7 +145,7 @@ const EarningsScreen: React.FC = () => {
             <CashReconciliationCard data={data.cashReconciliation} /> */}
 
             <View style={styles.spacer} />
-            {/* <TransactionHistory data={data.transactions} /> */}
+            <TransactionHistory data={data.transactions} />
           </>
         )}
 

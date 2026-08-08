@@ -1,10 +1,10 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { TrendingUp } from 'lucide-react-native';
+import { TrendingUp, TrendingDown } from 'lucide-react-native';
 import { FONT_FAMILY } from '../../theme/typography';
-import type { EarningsSummary } from '../../types/earnings';
+import type { EarningsPeriod, EarningsSummary } from '../../types/earnings';
 
-type Props = { data: EarningsSummary };
+type Props = { data: EarningsSummary; period?: EarningsPeriod };
 
 const StatItem: React.FC<{ label: string; value: string }> = ({ label, value }) => (
   <View style={styles.statItem}>
@@ -13,16 +13,23 @@ const StatItem: React.FC<{ label: string; value: string }> = ({ label, value }) 
   </View>
 );
 
-const EarningsSummaryCard: React.FC<Props> = ({ data }) => {
+const PERIOD_LABELS: Record<string, string> = {
+  today: 'TOTAL EARNINGS TODAY',
+  thisWeek: 'TOTAL EARNINGS THIS WEEK',
+  thisMonth: 'TOTAL EARNINGS THIS MONTH',
+  lifetime: 'TOTAL LIFETIME EARNINGS',
+};
+
+const EarningsSummaryCard: React.FC<Props> = ({ data, period }) => {
   const changePositive = data.percentageChange >= 0;
 
   return (
     <View style={styles.card}>
       <View style={styles.headerRow}>
-        <Text style={styles.headerLabel}>TOTAL EARNINGS TODAY</Text>
-        {data.percentageChange !== 0 && (
+        <Text style={styles.headerLabel}>{PERIOD_LABELS[period || 'today'] || 'TOTAL EARNINGS TODAY'}</Text>
+        {data.percentageChange !== 0 && period !== 'lifetime' && (
           <View style={[styles.changeBadge, changePositive ? styles.badgePositive : styles.badgeNegative]}>
-            <TrendingUp size={12} color={changePositive ? '#16A34A' : '#DC2626'} />
+            {changePositive ? <TrendingUp size={12} color="#16A34A" /> : <TrendingDown size={12} color="#DC2626" />}
             <Text style={[styles.changeText, changePositive ? styles.changePositive : styles.changeNegative]}>
               {changePositive ? '+' : ''}{data.percentageChange}% {data.comparisonLabel}
             </Text>
@@ -35,7 +42,6 @@ const EarningsSummaryCard: React.FC<Props> = ({ data }) => {
       <View style={styles.statsRow}>
         <StatItem label="Orders Done" value={String(data.ordersDone)} />
         <StatItem label="Base Pay" value={`₹${data.basePay}`} />
-        <StatItem label="Order Earnings" value={`₹${data.orderEarnings}`} />
         <StatItem label="Bonus" value={`₹${data.bonus}`} />
         <StatItem label="Tips" value={`₹${data.tips}`} />
       </View>

@@ -24,6 +24,7 @@ import deliveryPartnerService from '../services/delivery-partner.service';
 import type {
   DeliveryPartnerOrder,
   DeliveryPartnerStats,
+  StatsPeriod,
 } from '../services/delivery-partner.service';
 import websocketService, {
   type OrderActionEvent,
@@ -534,9 +535,7 @@ const HomeScreen: React.FC = () => {
     null,
   );
   const [isStatsLoading, setIsStatsLoading] = useState(false);
-  const [statsFilter, setStatsFilter] = useState<
-    'daily' | 'weekly' | 'monthly' | 'allTime'
-  >('daily');
+  const [statsFilter, setStatsFilter] = useState<StatsPeriod>('today');
   // NOTE: 'custom' added here — this filter (and only this filter) is
   // exclusive to the Orders tab. The Dashboard tab's `statsFilter` above is
   // untouched and intentionally has no custom option.
@@ -680,12 +679,13 @@ const HomeScreen: React.FC = () => {
     }
   };
 
-  const fetchPartnerStats = async () => {
+  const fetchPartnerStats = async (period: StatsPeriod = statsFilter) => {
     if (!partnerId) return;
     setIsStatsLoading(true);
     try {
       const data = await deliveryPartnerService.getDeliveryPartnerStats(
         partnerId,
+        period,
       );
       setPartnerStats(data);
     } catch (error) {
@@ -750,9 +750,9 @@ const HomeScreen: React.FC = () => {
       }, 5000);
       return () => clearInterval(intervalId);
     } else if (activeTab === 'dashboard') {
-      fetchPartnerStats();
+      fetchPartnerStats(statsFilter);
     }
-  }, [activeTab, partnerId]);
+  }, [activeTab, partnerId, statsFilter]);
 
   const handleWebSocketEvent = useCallback(
     (event: OrderActionEvent) => {
@@ -2195,14 +2195,11 @@ const HomeScreen: React.FC = () => {
     setOtpLoading(false);
   };
 
-  const statsFilterOptions: {
-    key: 'daily' | 'weekly' | 'monthly' | 'allTime' | 'custom';
-    label: string;
-  }[] = [
-    { key: 'daily', label: 'Today' },
-    { key: 'weekly', label: 'This Week' },
-    { key: 'monthly', label: 'This Month' },
-    { key: 'allTime', label: 'All Time' },
+  const statsFilterOptions: { key: StatsPeriod; label: string }[] = [
+    { key: 'today',    label: 'Today' },
+    { key: 'week',     label: 'This Week' },
+    { key: 'month',    label: 'This Month' },
+    { key: 'all_time', label: 'All Time' },
   ];
 
   const paymentTypeFilterOptions: {
@@ -2215,20 +2212,19 @@ const HomeScreen: React.FC = () => {
     { key: 'codQrCode', label: 'QR Code' },
   ];
 
-  const activeStatsData =
-    statsFilter === 'allTime'
-      ? {
-          count: partnerStats?.totalOrders ?? 0,
-          earnings: partnerStats?.totalEarnings ?? 0,
-        }
-      : partnerStats?.[statsFilter] ?? { count: 0, earnings: 0 };
+  // Stats cards read directly from the flat API response (period-scoped).
+  const activeOrders         = partnerStats?.orders ?? 0;
+  const activeEarnings       = partnerStats?.earnings ?? 0;
+  const activeAcceptedCount  = partnerStats?.acceptedCount ?? 0;
+  const activeAcceptanceRate = partnerStats?.acceptanceRate ?? 0;
+  const activeTotalAssigned  = partnerStats?.totalAssigned ?? 0;
 
   const DAILY_TARGET = 15;
   const XP_PER_ORDER = 5;
   const BONUS_PER_TARGET = 60;
-  const dailyCompleted = partnerStats?.daily.count ?? 0;
+  const dailyCompleted = partnerStats?.orders ?? 0;
   const dailyRemaining = Math.max(0, DAILY_TARGET - dailyCompleted);
-  const totalXp = (partnerStats?.totalOrders ?? 0) * XP_PER_ORDER;
+  const totalXp = (partnerStats?.orders ?? 0) * XP_PER_ORDER;
 
   const LEVELS = [
     { name: 'Bronze', minXp: 0, stars: 1, color: '#CD7F32' },
@@ -2414,7 +2410,10 @@ const HomeScreen: React.FC = () => {
                     />
                     <Text style={styles.statLabel}>Orders</Text>
                     <Text style={styles.statValue}>
-                      {activeStatsData.count}
+                      {activeOrders}
+                    </Text>
+                    <Text style={[styles.statLabel, { fontSize: 10, marginTop: 2 }]}>
+                      {activeTotalAssigned} assigned
                     </Text>
                   </View>
                   <View style={styles.statCard}>
@@ -2426,7 +2425,22 @@ const HomeScreen: React.FC = () => {
                     />
                     <Text style={styles.statLabel}>Earnings</Text>
                     <Text style={styles.statValue}>
-                      Rs {activeStatsData.earnings.toFixed(2)}
+                      Rs {activeEarnings.toFixed(2)}
+                    </Text>
+                  </View>
+                  <View style={styles.statCard}>
+                    <View
+                      style={[
+                        styles.statAccent,
+                        { backgroundColor: '#F59E0B' },
+                      ]}
+                    />
+                    <Text style={styles.statLabel}>Acceptance</Text>
+                    <Text style={styles.statValue}>
+                      {activeAcceptanceRate.toFixed(1)}%
+                    </Text>
+                    <Text style={[styles.statLabel, { fontSize: 10, marginTop: 2 }]}>
+                      {activeAcceptedCount} accepted
                     </Text>
                   </View>
                 </View>
@@ -2549,6 +2563,7 @@ const HomeScreen: React.FC = () => {
                             style={styles.leaderboardAvatar}
                           />
                           <View style={styles.leaderboardInfo}>
+                            {/* Name row */}
                             <Text
                               style={[
                                 styles.leaderboardName,
@@ -2560,10 +2575,34 @@ const HomeScreen: React.FC = () => {
                               {rider.name}
                               {isCurrentUser ? ' (You)' : ''}
                             </Text>
-                            <Text style={styles.leaderboardSub}>
-                              {rider.deliveries} orders · Rs{' '}
-                              {rider.earnings.toFixed(2)}
-                            </Text>
+
+                            {/* Orders + Earnings + Acceptance row */}
+                            <View style={styles.lbStatsRow}>
+                              <View style={styles.lbStatItem}>
+                                <Text style={styles.lbStatIcon}>📦</Text>
+                                <Text style={styles.lbStatText}>
+                                  {rider.deliveries} orders
+                                </Text>
+                              </View>
+                              
+                              <Text style={styles.lbStatDot}>•</Text>
+                              
+                              <View style={styles.lbStatItem}>
+                                <Text style={styles.lbStatIcon}>💰</Text>
+                                <Text style={styles.lbStatText}>
+                                  Rs {rider.earnings.toFixed(0)}
+                                </Text>
+                              </View>
+
+                              <Text style={styles.lbStatDot}>•</Text>
+
+                              {/* Pill acceptance rate badge */}
+                              <View style={styles.lbAccBadge}>
+                                <Text style={styles.lbAccRate}>
+                                  {rider.acceptanceRate.toFixed(1)}%
+                                </Text>
+                              </View>
+                            </View>
                           </View>
                         </View>
                       );
@@ -3345,6 +3384,48 @@ const styles = StyleSheet.create({
     fontFamily: FONT_FAMILY.outfitRegular,
     color: '#5C6980',
     marginTop: 2,
+  },
+  // ── Leaderboard row stats ──────────────────────────────────────────────
+  lbStatsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    marginTop: 5,
+    gap: 4,
+  },
+  lbStatItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  lbStatIcon: {
+    fontSize: 11,
+  },
+  lbStatText: {
+    fontSize: 11,
+    fontFamily: FONT_FAMILY.outfitRegular,
+    color: '#5C6980',
+  },
+  lbStatDot: {
+    fontSize: 11,
+    color: '#CBD5E1',
+    marginHorizontal: 1,
+  },
+  // ── Pill acceptance badge ──────────────────────────────────────────
+  lbAccBadge: {
+    width: 52,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: '#16A34A',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F0FDF4',
+  },
+  lbAccRate: {
+    fontSize: 10,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#16A34A',
   },
   sectionCard: {
     marginTop: 8,
