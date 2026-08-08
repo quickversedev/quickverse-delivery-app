@@ -55,6 +55,11 @@ export type DeliveryPartnerOrder = {
   paymentStatus: string | null;
   paymentMethod: string | null;
   paymentReferenceId: string | null;
+  assignedAt: string | null;
+  arrivedAtStoreAt: string | null;
+  reachedLocationAt: string | null;
+  pickedUpAt: string | null;
+  deliveredAt: string | null;
   createdAt: string | null;
   createdBy: string | null;
   updatedBy: string | null;
@@ -245,6 +250,11 @@ const toggleDeliveryPartnerOnlineStatus = async (
 
 const normalizePartnerOrder = (order: any): DeliveryPartnerOrder => ({
   id: String(order?.id ?? ''),
+  assignedAt: order?.assignedAt ? String(order.assignedAt) : null,
+  arrivedAtStoreAt: order?.arrivedAtStoreAt ? String(order.arrivedAtStoreAt) : null,
+  reachedLocationAt: order?.reachedLocationAt ? String(order.reachedLocationAt) : null,
+  pickedUpAt: order?.pickedUpAt ? String(order.pickedUpAt) : null,
+  deliveredAt: order?.deliveredAt ? String(order.deliveredAt) : null,
   orderId: String(order?.orderId ?? ''),
   customerId:
     typeof order?.customerId === 'number'
@@ -548,6 +558,49 @@ const updateAssignedOrderStatus = async (
   );
 };
 
+/**
+ * Accept a newly-assigned order. Called from the "New Order Request" card
+ * (before any delivery-stage progression begins). On success the order's
+ * top-level `orderStatus` moves from PARTNER_ASSIGNED -> ACCEPTED, after
+ * which it becomes eligible for the normal live-order / "Manage Delivery"
+ * flow.
+ */
+const acceptOrder = async (orderMasterId: string): Promise<void> => {
+  const sessionKey = await TokenStorage.getToken();
+
+  await apiCall(
+    axiosInstance.patch(`/v1/order-master/${orderMasterId}/accept`, null, {
+      headers: {
+        SessionKey: sessionKey || '',
+        'Request-Origin': 'CAPTAIN',
+      },
+      validateStatus: status => status >= 200 && status < 400,
+    }),
+  );
+};
+
+/**
+ * Reject a newly-assigned order, with a mandatory reason. Called from the
+ * "New Order Request" card as the counterpart to `acceptOrder`.
+ */
+const rejectOrder = async (
+  orderMasterId: string,
+  reason: string,
+): Promise<void> => {
+  const sessionKey = await TokenStorage.getToken();
+
+  await apiCall(
+    axiosInstance.patch(`/v1/order-master/${orderMasterId}/reject`, null, {
+      params: { reason },
+      headers: {
+        SessionKey: sessionKey || '',
+        'Request-Origin': 'CAPTAIN',
+      },
+      validateStatus: status => status >= 200 && status < 400,
+    }),
+  );
+};
+
 export type TopPerformingRider = {
   riderId: string;
   name: string;
@@ -695,6 +748,8 @@ const deliveryPartnerService = {
   toggleDeliveryPartnerOnlineStatus,
   getAssignedOrdersByPartnerId,
   updateAssignedOrderStatus,
+  acceptOrder,
+  rejectOrder,
   updateDeliveryPartnerLocation,
   getDeliveryPartnerStats,
   arriveAtStore,

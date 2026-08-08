@@ -21,6 +21,7 @@ import {
   CheckCircle2,
   MapPin,
   User,
+  Store,
   ExternalLink,
   Camera,
   Upload,
@@ -417,6 +418,14 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
   const [qrModalVisible, setQrModalVisible] = useState(false);
   // Track if the CTA was tapped without meeting requirements, to show inline errors
   const [submitAttempted, setSubmitAttempted] = useState(false);
+  // Toggle between Vendor / Customer contact preview at the Reach Store stage
+  const [storeContactView, setStoreContactView] = useState<
+    'vendor' | 'customer'
+  >('vendor');
+  // Toggle between Vendor / Customer contact preview at the Pickup stage
+  const [pickupContactView, setPickupContactView] = useState<
+    'vendor' | 'customer'
+  >('vendor');
 
   const [partnerCoord, setPartnerCoord] = useState<{
     lat: number;
@@ -520,6 +529,10 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
     ? 'QR CODE'
     : 'CASH';
 
+  const customerMobileDisplay = order.orderDetails?.customerMobile
+    ? String(order.orderDetails.customerMobile).slice(-10)
+    : null;
+
   const openOrderWebView = () => {
     const url = order.orderDetails?.orderLink;
     if (!url) return;
@@ -558,6 +571,141 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
     if (mode === 'CASH') {
       setEvidenceImage(null);
     }
+  };
+
+  const parseDateValue = (value: string | null): Date | null => {
+    if (!value) return null;
+    const numericTimestamp = Number(value);
+    if (Number.isFinite(numericTimestamp) && numericTimestamp > 0) {
+      const fromEpoch = new Date(numericTimestamp);
+      return Number.isNaN(fromEpoch.getTime()) ? null : fromEpoch;
+    }
+    const normalized = value.includes(' ') ? value.replace(' ', 'T') : value;
+    const fromString = new Date(normalized);
+    return Number.isNaN(fromString.getTime()) ? null : fromString;
+  };
+
+  const formatOrderDateTime = (value: string | null) => {
+    const parsedDate = parseDateValue(value);
+    if (!parsedDate) return { date: 'N/A', time: '' };
+    return {
+      date: `${String(parsedDate.getDate()).padStart(2, '0')}/${String(
+        parsedDate.getMonth() + 1,
+      ).padStart(2, '0')}/${String(parsedDate.getFullYear()).slice(-2)}`,
+      time: parsedDate.toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
+    };
+  };
+
+  const parseTimestamp = (
+    value: string | number | null | undefined,
+  ): number | null => {
+    if (value === null || value === undefined || value === '') {
+      return null;
+    }
+
+    // Already a number
+    if (typeof value === 'number') {
+      if (!Number.isFinite(value)) {
+        return null;
+      }
+
+      // Milliseconds timestamp
+      if (value > 10_000_000_000) {
+        return value;
+      }
+
+      // Seconds timestamp
+      if (value > 1_000_000_000) {
+        return value * 1000;
+      }
+
+      return null;
+    }
+
+    const trimmedValue = value.trim();
+
+    if (!trimmedValue) {
+      return null;
+    }
+
+    // Numeric string timestamp
+    if (/^\d+$/.test(trimmedValue)) {
+      const numericValue = Number(trimmedValue);
+
+      if (!Number.isFinite(numericValue)) {
+        return null;
+      }
+
+      // Milliseconds
+      if (numericValue > 10_000_000_000) {
+        return numericValue;
+      }
+
+      // Seconds
+      if (numericValue > 1_000_000_000) {
+        return numericValue * 1000;
+      }
+
+      return null;
+    }
+
+    // ISO format / standard date format
+    let dateValue = trimmedValue;
+
+    // Convert SQL datetime:
+    // "2026-07-03 13:39:35"
+    // to:
+    // "2026-07-03T13:39:35"
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(dateValue)) {
+      dateValue = dateValue.replace(' ', 'T');
+    }
+
+    const parsedDate = new Date(dateValue);
+
+    if (!Number.isNaN(parsedDate.getTime())) {
+      return parsedDate.getTime();
+    }
+
+    return null;
+  };
+
+  const calculateTimeDifference = (
+    startTime: string | number | null | undefined,
+    endTime: string | number | null | undefined,
+  ): string => {
+    console.log('calculateTimeDifference called with:', startTime, endTime);
+
+    const startMs = parseTimestamp(startTime);
+    const endMs = parseTimestamp(endTime);
+
+    if (startMs === null || endMs === null) {
+      return '-';
+    }
+
+    const diffMs = endMs - startMs;
+
+    // If end time is before start time
+    if (diffMs < 0) {
+      return '-';
+    }
+
+    const diffMins = Math.floor(diffMs / 60000);
+
+    if (diffMins < 1) {
+      return '< 1m';
+    }
+
+    if (diffMins < 60) {
+      return `${diffMins}m`;
+    }
+
+    const hours = Math.floor(diffMins / 60);
+    const mins = diffMins % 60;
+
+    return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
   };
 
   const handleAction = useCallback(async () => {
@@ -632,83 +780,275 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
         fallbackLabel={order.shopDetails?.name ?? 'Store'}
       />
 
-      <View style={s.infoCard}>
-        <View style={s.infoCardHeader}>
-          <View style={s.infoCardHeaderLeft}>
-            <Text style={s.infoCardTitle}>
-              {order.shopDetails?.name || 'Store'}
-            </Text>
-            {order.shopDetails?.owner ? (
-              <Text style={s.infoCardSub}>{order.shopDetails.owner}</Text>
-            ) : null}
+      {/* ── Vendor / Customer toggle ── */}
+      <View style={s.contactToggleRow}>
+        <TouchableOpacity
+          style={[
+            s.contactToggleBtn,
+            storeContactView === 'vendor' && s.contactToggleBtnActive,
+          ]}
+          onPress={() => setStoreContactView('vendor')}
+          activeOpacity={0.85}
+        >
+          <Store
+            size={15}
+            color={storeContactView === 'vendor' ? '#FF4D00' : '#94A3B8'}
+          />
+          <Text
+            style={[
+              s.contactToggleText,
+              storeContactView === 'vendor' && s.contactToggleTextVendorActive,
+            ]}
+          >
+            Vendor
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            s.contactToggleBtn,
+            storeContactView === 'customer' && s.contactToggleBtnActive,
+          ]}
+          onPress={() => setStoreContactView('customer')}
+          activeOpacity={0.85}
+        >
+          <User
+            size={15}
+            color={storeContactView === 'customer' ? '#0B9E6E' : '#94A3B8'}
+          />
+          <Text
+            style={[
+              s.contactToggleText,
+              storeContactView === 'customer' &&
+                s.contactToggleTextCustomerActive,
+            ]}
+          >
+            Customer
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* ── Vendor detail card ── */}
+      {storeContactView === 'vendor' ? (
+        <View style={s.infoCard}>
+          <View style={s.infoCardHeader}>
+            <View style={s.infoCardHeaderLeft}>
+              <Text style={s.infoCardTitle}>
+                {order.shopDetails?.name || 'Store'}
+              </Text>
+              {order.shopDetails?.owner ? (
+                <Text style={s.infoCardSub}>{order.shopDetails.owner}</Text>
+              ) : null}
+            </View>
+            <View style={s.infoCardBadge}>
+              <Text style={s.infoCardBadgeText}>Pickup</Text>
+            </View>
           </View>
-          <View style={s.infoCardBadge}>
-            <Text style={s.infoCardBadgeText}>Pickup</Text>
-          </View>
-        </View>
 
-        <View style={s.divider} />
+          <View style={s.divider} />
 
-        <InfoChip
-          icon={<MapPin size={14} color="#64748B" />}
-          label="Address"
-          value={shopAddressText || 'N/A'}
-        />
+          <InfoChip
+            icon={<MapPin size={14} color="#64748B" />}
+            label="Address"
+            value={shopAddressText || 'N/A'}
+          />
 
-        <View style={s.actionRow}>
-          {order.shopDetails?.phone && (
+          <View style={s.actionRow}>
+            {order.shopDetails?.phone && (
+              <TouchableOpacity
+                style={s.iconActionBtn}
+                onPress={() =>
+                  Linking.openURL(`tel:${order.shopDetails!.phone}`)
+                }
+                activeOpacity={0.8}
+              >
+                <Phone size={16} color="#16A34A" />
+                <Text style={[s.iconActionText, { color: '#16A34A' }]}>
+                  Call Store
+                </Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
-              style={s.iconActionBtn}
-              onPress={() => Linking.openURL(`tel:${order.shopDetails!.phone}`)}
-              activeOpacity={0.8}
+              style={[s.iconActionBtn, s.iconActionBtnBlue]}
+              onPress={() =>
+                openMaps(
+                  shopCoord?.lat ?? null,
+                  shopCoord?.lng ?? null,
+                  shopAddressText,
+                )
+              }
+              activeOpacity={0.85}
             >
-              <Phone size={16} color="#16A34A" />
-              <Text style={[s.iconActionText, { color: '#16A34A' }]}>
-                Call Store
+              <Navigation size={16} color="#0E6DFD" />
+              <Text style={[s.iconActionText, { color: '#0E6DFD' }]}>
+                Navigate
               </Text>
             </TouchableOpacity>
-          )}
-          <TouchableOpacity
-            style={[s.iconActionBtn, s.iconActionBtnBlue]}
-            onPress={() =>
-              openMaps(
-                shopCoord?.lat ?? null,
-                shopCoord?.lng ?? null,
-                shopAddressText,
-              )
-            }
-            activeOpacity={0.85}
-          >
-            <Navigation size={16} color="#0E6DFD" />
-            <Text style={[s.iconActionText, { color: '#0E6DFD' }]}>
-              Navigate
-            </Text>
-          </TouchableOpacity>
+          </View>
         </View>
-      </View>
+      ) : (
+        /* ── Customer detail card ── */
+        <View style={s.infoCard}>
+          <View style={s.infoCardHeader}>
+            <View style={s.infoCardHeaderLeft}>
+              <Text style={s.infoCardTitle}>
+                {order.orderDetails?.customerName || 'Customer'}
+              </Text>
+              <Text style={s.infoCardSub}>Delivery destination</Text>
+            </View>
+            <View style={[s.infoCardBadge, { backgroundColor: '#F0F9FF' }]}>
+              <Text style={[s.infoCardBadgeText, { color: '#0891B2' }]}>
+                Drop
+              </Text>
+            </View>
+          </View>
+
+          <View style={s.divider} />
+
+          <InfoChip
+            icon={<MapPin size={14} color="#64748B" />}
+            label="Address"
+            value={customerAddress.text}
+          />
+
+          <View style={s.actionRow}>
+            {order.orderDetails?.customerMobile && (
+              <TouchableOpacity
+                style={s.iconActionBtn}
+                onPress={() =>
+                  Linking.openURL(
+                    `tel:${String(order.orderDetails!.customerMobile).slice(
+                      -10,
+                    )}`,
+                  )
+                }
+                activeOpacity={0.8}
+              >
+                <Phone size={16} color="#16A34A" />
+                <Text style={[s.iconActionText, { color: '#16A34A' }]}>
+                  Call Customer
+                </Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={[s.iconActionBtn, s.iconActionBtnBlue]}
+              onPress={() =>
+                openMaps(
+                  customerCoord?.lat ?? null,
+                  customerCoord?.lng ?? null,
+                  customerAddress.text,
+                )
+              }
+              activeOpacity={0.85}
+            >
+              <Navigation size={16} color="#0E6DFD" />
+              <Text style={[s.iconActionText, { color: '#0E6DFD' }]}>
+                Navigate
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
     </>
   );
 
   const renderStep1 = () => (
     <>
-      <View style={s.vendorChip}>
-        <View style={s.vendorChipLeft}>
-          <Text style={s.vendorChipName}>
-            {order.shopDetails?.name || 'Store'}
-          </Text>
-          <Text style={s.vendorChipAddr} numberOfLines={1}>
-            {shopAddressText || 'N/A'}
-          </Text>
-        </View>
-        {order.shopDetails?.phone && (
-          <TouchableOpacity
-            style={s.vendorChipCall}
-            onPress={() => Linking.openURL(`tel:${order.shopDetails!.phone}`)}
+      {/* ── Vendor / Customer toggle ── */}
+      <View style={s.contactToggleRow}>
+        <TouchableOpacity
+          style={[
+            s.contactToggleBtn,
+            pickupContactView === 'vendor' && s.contactToggleBtnActive,
+          ]}
+          onPress={() => setPickupContactView('vendor')}
+          activeOpacity={0.85}
+        >
+          <Store
+            size={15}
+            color={pickupContactView === 'vendor' ? '#FF4D00' : '#94A3B8'}
+          />
+          <Text
+            style={[
+              s.contactToggleText,
+              pickupContactView === 'vendor' && s.contactToggleTextVendorActive,
+            ]}
           >
-            <Phone size={14} color="#16A34A" />
-          </TouchableOpacity>
-        )}
+            Vendor
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            s.contactToggleBtn,
+            pickupContactView === 'customer' && s.contactToggleBtnActive,
+          ]}
+          onPress={() => setPickupContactView('customer')}
+          activeOpacity={0.85}
+        >
+          <User
+            size={15}
+            color={pickupContactView === 'customer' ? '#0B9E6E' : '#94A3B8'}
+          />
+          <Text
+            style={[
+              s.contactToggleText,
+              pickupContactView === 'customer' &&
+                s.contactToggleTextCustomerActive,
+            ]}
+          >
+            Customer
+          </Text>
+        </TouchableOpacity>
       </View>
+
+      {/* ── Vendor preview ── */}
+      {pickupContactView === 'vendor' ? (
+        <View style={s.vendorChip}>
+          <View style={s.vendorChipLeft}>
+            <Text style={s.vendorChipName} numberOfLines={1}>
+              {order.shopDetails?.name || 'Store'}
+            </Text>
+            <Text style={s.vendorChipAddr} numberOfLines={1}>
+              {shopAddressText || 'N/A'}
+            </Text>
+          </View>
+          {order.shopDetails?.phone && (
+            <TouchableOpacity
+              style={s.vendorChipCall}
+              onPress={() => Linking.openURL(`tel:${order.shopDetails!.phone}`)}
+            >
+              <Phone size={14} color="#16A34A" />
+            </TouchableOpacity>
+          )}
+        </View>
+      ) : (
+        /* ── Customer preview ── */
+        <View style={s.vendorChip}>
+          <View style={s.vendorChipLeft}>
+            <Text style={s.vendorChipName} numberOfLines={1}>
+              {order.orderDetails?.customerName || 'Customer'}
+            </Text>
+            <Text style={s.vendorChipAddr} numberOfLines={1}>
+              {customerAddress.text}
+            </Text>
+            {!!customerMobileDisplay && (
+              <View style={s.vendorChipMobileRow}>
+                <Phone size={11} color="#64748B" />
+                <Text style={s.vendorChipMobile}>{customerMobileDisplay}</Text>
+              </View>
+            )}
+          </View>
+          {customerMobileDisplay && (
+            <TouchableOpacity
+              style={[s.vendorChipCall, { backgroundColor: '#ECFDF5' }]}
+              onPress={() => Linking.openURL(`tel:${customerMobileDisplay}`)}
+            >
+              <Phone size={14} color="#16A34A" />
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
 
       <View style={s.infoCard}>
         <Text style={s.sectionLabel}>ITEMS TO COLLECT</Text>
@@ -1065,6 +1405,44 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
     );
   };
 
+  // ── Order stage timestamps ──
+  const assignedAtDateTime = formatOrderDateTime(
+    order?.assignedAt ? String(order.assignedAt) : null,
+  );
+  const arrivedAtStoreDateTime = formatOrderDateTime(
+    order?.arrivedAtStoreAt ? String(order.arrivedAtStoreAt) : null,
+  );
+  const pickedUpDateTime = formatOrderDateTime(
+    order?.pickedUpAt ? String(order.pickedUpAt) : null,
+  );
+  const reachedLocationDateTime = formatOrderDateTime(
+    order?.reachedLocationAt ? String(order.reachedLocationAt) : null,
+  );
+  const deliveredAtDateTime = formatOrderDateTime(
+    order?.deliveredAt ? String(order.deliveredAt) : null,
+  );
+
+  const parseDateValueLocal = (value: string | null): Date | null => {
+    if (!value) return null;
+    const num = Number(value);
+    if (Number.isFinite(num) && num > 0) return new Date(num);
+    const d = new Date(value.includes(' ') ? value.replace(' ', 'T') : value);
+    return isNaN(d.getTime()) ? null : d;
+  };
+
+  const orderDateTime = (() => {
+    const d = parseDateValueLocal(
+      order.orderDetails?.creationTime ?? order.createdAt ?? null,
+    );
+    if (!d) return { date: 'N/A', time: '' };
+    return {
+      date: `${String(d.getDate()).padStart(2, '0')}/${String(
+        d.getMonth() + 1,
+      ).padStart(2, '0')}/${String(d.getFullYear()).slice(-2)}`,
+      time: d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+  })();
+
   const renderStep4 = () => (
     <View style={s.successCard}>
       <View style={s.successIconWrap}>
@@ -1096,6 +1474,164 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
         <Text style={[s.successRowValue, s.successRowValueBold]}>
           {formatCurrency(order?.finance?.payableAmount || computedTotal)}
         </Text>
+      </View>
+
+      {/* ── COMPACT DELIVERY TIMELINE ── */}
+      <View style={{ width: '100%' }}>
+        <Text style={s.sectionTitleInline}>Delivery Timeline</Text>
+
+        {/* Compact timeline container */}
+        <View style={s.compactTimelineContainer}>
+          {/* Order Placed - Always shown */}
+          <View style={s.compactTimelineStage}>
+            <View style={[s.compactDot, { backgroundColor: '#0E6DFD' }]} />
+            <View style={s.compactStageInfo}>
+              <Text style={s.compactStageLabel}>Order Placed</Text>
+              <Text style={s.compactStageTime}>
+                {orderDateTime.time !== 'N/A' ? orderDateTime.time : 'N/A'}
+              </Text>
+            </View>
+          </View>
+          {/* Interval & Assigned At */}
+          {assignedAtDateTime.date !== 'N/A' && (
+            <View style={s.compactTimelineStage}>
+              <View style={[s.compactDot, { backgroundColor: '#0E6DFD' }]} />
+
+              <View style={s.compactStageInfo}>
+                <Text style={[s.compactStageLabel, { color: '#0E6DFD' }]}>
+                  Assigned At
+                </Text>
+
+                <Text style={[s.compactStageTime, { color: '#0E6DFD' }]}>
+                  {assignedAtDateTime.time || assignedAtDateTime.date}
+                </Text>
+              </View>
+
+              <View style={s.compactIntervalBadge}>
+                <Text style={s.compactIntervalBadgeText}>
+                  {calculateTimeDifference(
+                    order?.orderDetails?.creationTime ?? order?.createdAt,
+                    order?.assignedAt,
+                  )}
+                </Text>
+              </View>
+            </View>
+          )}
+          {/* Interval & Arrived at Store */}
+          {arrivedAtStoreDateTime.date !== 'N/A' && (
+            <View style={s.compactTimelineStage}>
+              <View style={[s.compactDot, { backgroundColor: '#0E6DFD' }]} />
+
+              <View style={s.compactStageInfo}>
+                <Text style={[s.compactStageLabel, { color: '#0E6DFD' }]}>
+                  Arrived at Store
+                </Text>
+
+                <Text style={[s.compactStageTime, { color: '#0E6DFD' }]}>
+                  {arrivedAtStoreDateTime.time || arrivedAtStoreDateTime.date}
+                </Text>
+              </View>
+
+              <View style={s.compactIntervalBadge}>
+                <Text style={s.compactIntervalBadgeText}>
+                  {calculateTimeDifference(
+                    order?.assignedAt,
+                    order?.arrivedAtStoreAt,
+                  )}
+                </Text>
+              </View>
+            </View>
+          )}
+          {/* Interval & Picked Up */}
+          {pickedUpDateTime.date !== 'N/A' && (
+            <View style={s.compactTimelineStage}>
+              <View style={[s.compactDot, { backgroundColor: '#0E6DFD' }]} />
+
+              <View style={s.compactStageInfo}>
+                <Text style={[s.compactStageLabel, { color: '#0E6DFD' }]}>
+                  Picked Up
+                </Text>
+
+                <Text style={[s.compactStageTime, { color: '#0E6DFD' }]}>
+                  {pickedUpDateTime.time || pickedUpDateTime.date}
+                </Text>
+              </View>
+
+              <View style={s.compactIntervalBadge}>
+                <Text style={s.compactIntervalBadgeText}>
+                  {calculateTimeDifference(
+                    order?.arrivedAtStoreAt,
+                    order?.pickedUpAt,
+                  )}
+                </Text>
+              </View>
+            </View>
+          )}
+          {/* Interval & Reached Destination */}
+          {reachedLocationDateTime.date !== 'N/A' && (
+            <View style={s.compactTimelineStage}>
+              <View style={[s.compactDot, { backgroundColor: '#0E6DFD' }]} />
+
+              <View style={s.compactStageInfo}>
+                <Text style={[s.compactStageLabel, { color: '#0E6DFD' }]}>
+                  Reached Destination
+                </Text>
+
+                <Text style={[s.compactStageTime, { color: '#0E6DFD' }]}>
+                  {reachedLocationDateTime.time || reachedLocationDateTime.date}
+                </Text>
+              </View>
+
+              <View style={s.compactIntervalBadge}>
+                <Text style={s.compactIntervalBadgeText}>
+                  {calculateTimeDifference(
+                    order?.pickedUpAt,
+                    order?.reachedLocationAt,
+                  )}
+                </Text>
+              </View>
+            </View>
+          )}
+
+          {/* Interval & Delivered */}
+          {deliveredAtDateTime.date !== 'N/A' && (
+            <View style={s.compactTimelineStage}>
+              <View style={[s.compactDot, { backgroundColor: '#16A34A' }]} />
+
+              <View style={s.compactStageInfo}>
+                <Text style={[s.compactStageLabel, { color: '#16A34A' }]}>
+                  Delivered
+                </Text>
+
+                <Text style={[s.compactStageTime, { color: '#16A34A' }]}>
+                  {deliveredAtDateTime.time || deliveredAtDateTime.date}
+                </Text>
+              </View>
+
+              <View style={s.compactIntervalBadge}>
+                <Text style={s.compactIntervalBadgeText}>
+                  {calculateTimeDifference(
+                    order?.reachedLocationAt,
+                    order?.deliveredAt,
+                  )}
+                </Text>
+              </View>
+            </View>
+          )}
+        </View>
+
+        {/* Total Delivery Time Summary */}
+        {orderDateTime.date !== 'N/A' && deliveredAtDateTime.date !== 'N/A' && (
+          <View style={s.compactTotalTimeRow}>
+            <Text style={s.compactTotalTimeLabel}>Total Delivery Time</Text>
+            <Text style={s.compactTotalTimeValue}>
+              {calculateTimeDifference(
+                order?.orderDetails?.creationTime ?? order?.createdAt,
+                order?.deliveredAt,
+              )}
+            </Text>
+          </View>
+        )}
       </View>
     </View>
   );
@@ -1162,6 +1698,7 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
 
   return (
     <SafeAreaView style={s.container} edges={['top', 'left', 'right']}>
+      {/* ── Sticky header ── */}
       <View style={s.header}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
@@ -1174,17 +1711,19 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
         <View style={{ width: 36 }} />
       </View>
 
+      {/* ── Sticky progress stepper ── */}
       {renderStepper()}
 
-      <View style={s.banner}>
-        <Text style={s.bannerText}>{STEP_BANNERS[config.stageIndex]}</Text>
-      </View>
-
+      {/* ── Scrollable content (banner + step content) ── */}
       <ScrollView
         style={s.scroll}
         contentContainerStyle={s.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        <View style={s.banner}>
+          <Text style={s.bannerText}>{STEP_BANNERS[config.stageIndex]}</Text>
+        </View>
+
         {renderContent()}
         <View style={{ height: 100 }} />
       </ScrollView>
@@ -1612,6 +2151,36 @@ const s = StyleSheet.create({
     paddingVertical: 8,
   },
 
+  // ── Vendor / Customer toggle (Reach Store & Pickup stages) ──
+  contactToggleRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginHorizontal: 14,
+  },
+  contactToggleBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 9,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#FFFFFF',
+  },
+  contactToggleBtnActive: {
+    borderColor: '#CBD5E1',
+    backgroundColor: '#F8FAFC',
+  },
+  contactToggleText: {
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#94A3B8',
+  },
+  contactToggleTextVendorActive: { color: '#FF4D00' },
+  contactToggleTextCustomerActive: { color: '#0B9E6E' },
+
   vendorChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1638,6 +2207,17 @@ const s = StyleSheet.create({
     fontFamily: FONT_FAMILY.outfitRegular,
     color: '#94A3B8',
     marginTop: 2,
+  },
+  vendorChipMobileRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 3,
+  },
+  vendorChipMobile: {
+    fontSize: 11,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#64748B',
   },
   vendorChipCall: {
     width: 34,
@@ -2046,5 +2626,173 @@ const s = StyleSheet.create({
     fontFamily: FONT_FAMILY.outfitRegular,
     color: '#94A3B8',
     textAlign: 'center',
+  },
+  sectionTitleInline: {
+    fontSize: 14,
+    fontFamily: FONT_FAMILY.outfitExtraBold,
+    color: '#1E293B',
+  },
+  timelineEventRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginTop: 12,
+    marginBottom: 12,
+    paddingLeft: 8,
+  },
+  timelineEventDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#0E6DFD',
+    marginTop: 2,
+    marginRight: 12,
+    flexShrink: 0,
+  },
+  timelineEventContent: {
+    flex: 1,
+  },
+  timelineEventLabel: {
+    fontSize: 13,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#0F172A',
+  },
+  timelineEventTime: {
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.outfitRegular,
+    color: '#0E6DFD',
+    marginTop: 2,
+  },
+  timelineEventTimeNA: {
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.outfitRegular,
+    color: '#94A3B8',
+    marginTop: 2,
+  },
+  // ── Enhanced Timeline Styles ──
+  intervalBadge: {
+    marginTop: 6,
+    alignSelf: 'flex-start',
+    backgroundColor: '#0E6DFD',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    minWidth: 45,
+  },
+  intervalBadgeText: {
+    fontSize: 10,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#FFFFFF',
+    textAlign: 'center',
+  },
+  totalTimeContainer: {
+    marginTop: 12,
+    alignItems: 'center',
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+  },
+  totalTimeCircle: {
+    backgroundColor: '#F0F9FF',
+    borderRadius: 50,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    minWidth: 140,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#0E6DFD',
+  },
+  totalTimeLabel: {
+    fontSize: 11,
+    fontFamily: FONT_FAMILY.outfitRegular,
+    color: '#64748B',
+    marginBottom: 4,
+  },
+  totalTimeValue: {
+    fontSize: 16,
+    fontFamily: FONT_FAMILY.outfitExtraBold,
+    color: '#0E6DFD',
+  },
+  // ── Compact Timeline Styles (NEW) ──
+  compactTimelineContainer: {
+    marginTop: 12,
+    paddingVertical: 10,
+  },
+  compactTimelineStage: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 0,
+  },
+
+  compactDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 12,
+    flexShrink: 0,
+  },
+
+  compactStageInfo: {
+    flex: 1,
+  },
+
+  compactStageLabel: {
+    fontSize: 13,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#1E293B',
+  },
+
+  compactStageTime: {
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.outfitRegular,
+    marginTop: 2,
+  },
+
+  compactIntervalBadge: {
+    minWidth: 42,
+    height: 28,
+    paddingHorizontal: 8,
+    borderRadius: 14,
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 12,
+  },
+
+  compactIntervalBadgeText: {
+    fontSize: 10,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#64748B',
+  },
+  compactIntervalText: {
+    fontSize: 16,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#94A3B8',
+    fontStyle: 'italic',
+  },
+  compactTotalTimeRow: {
+    marginTop: 14,
+    paddingTop: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+    borderRadius: 12,
+    backgroundColor: '#F0F9FF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  compactTotalTimeLabel: {
+    fontSize: 13,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#475569',
+  },
+  compactTotalTimeValue: {
+    fontSize: 14,
+    fontFamily: FONT_FAMILY.bricolageBold,
+    color: '#0E6DFD',
   },
 });

@@ -15,6 +15,7 @@ import {
   AppState,
   Modal,
   Pressable,
+  TextInput,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -389,6 +390,129 @@ const getOrderPaymentType = (order: DeliveryPartnerOrder): PaymentTypeKey => {
   return paymentMethod === 'QR_CODE' ? 'codQrCode' : 'codCash';
 };
 
+// ── New Order Request card ────────────────────────────────────────────────
+// Rendered above LiveOrderCard for orders sitting at orderStatus ===
+// 'PARTNER_ASSIGNED' — i.e. assigned to this partner but not yet accepted or
+// rejected. Shows the essentials (shop, customer, amount) plus Accept /
+// Reject actions. `isLoading` is true only while THIS card's action is
+// in-flight, so the spinner never shows on the wrong card.
+type NewOrderRequestCardProps = {
+  order: DeliveryPartnerOrder;
+  isLoading: boolean;
+  onAccept: (order: DeliveryPartnerOrder) => void;
+  onReject: (order: DeliveryPartnerOrder) => void;
+};
+
+const NewOrderRequestCard: React.FC<NewOrderRequestCardProps> = ({
+  order,
+  isLoading,
+  onAccept,
+  onReject,
+}) => {
+  const { getPricingValues } = usePricingStore();
+
+  const amountExcludingDeliveryFee =
+    order.orderDetails?.amountExcludingDeliveryFee ?? 0;
+  const serviceType: ServiceType = order.shopDetails?.category
+    ?.toLowerCase()
+    .includes('grocery')
+    ? 'GROCERY'
+    : 'FOOD';
+  const pricing = getPricingValues(serviceType);
+  const commission = pricing.commissionRate * amountExcludingDeliveryFee;
+  const taxableAmount = commission + pricing.deliveryFee + pricing.platformFee;
+  const taxes = Math.round(pricing.gstRate * taxableAmount);
+  const computedTotal =
+    amountExcludingDeliveryFee +
+    pricing.deliveryFee +
+    pricing.platformFee +
+    pricing.packagingCharges +
+    taxes;
+
+  const formatCurrencyLocal = (amount: number) =>
+    `₹${Number.isFinite(amount) ? amount.toFixed(2) : '0.00'}`;
+
+  const itemCount = order.orderDetails?.totalItemCount ?? 0;
+  const orderDescription =
+    order.orderDetails?.orderDescription ||
+    (order.orderDetails?.orderItem?.length
+      ? order.orderDetails.orderItem.map(item => item.name).join(', ')
+      : null);
+
+  return (
+    <View style={styles.newOrderCard}>
+      <View style={styles.livePulseRow}>
+        <View style={[styles.liveDot, { backgroundColor: '#F59E0B' }]} />
+        <Text style={[styles.liveLabel, { color: '#B45309' }]}>
+          New Order Request
+        </Text>
+        <Text style={styles.liveOrderId}>#{order.orderId || order.id}</Text>
+      </View>
+
+      <View
+        style={{
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginTop: 6,
+        }}
+      >
+        <Text style={styles.liveLocName}>
+          {order.orderDetails?.customerName || 'Customer'}
+        </Text>
+        <Text style={styles.liveEarningsInline}>
+          {formatCurrencyLocal(order?.finance?.payableAmount || computedTotal)}
+        </Text>
+      </View>
+
+      <Text style={[styles.liveLocAddress, { marginTop: 2 }]}>
+        {order.shopDetails?.name || 'Shop'}
+        {itemCount > 0 ? ` · ${itemCount} item${itemCount > 1 ? 's' : ''}` : ''}
+      </Text>
+
+      {!!orderDescription && (
+        <Text
+          style={[styles.liveLocAddress, { marginTop: 2 }]}
+          numberOfLines={1}
+        >
+          {orderDescription}
+        </Text>
+      )}
+
+      <View style={styles.newOrderActionsRow}>
+        <TouchableOpacity
+          style={[
+            styles.newOrderButton,
+            styles.newOrderRejectButton,
+            isLoading && { opacity: 0.6 },
+          ]}
+          activeOpacity={0.85}
+          disabled={isLoading}
+          onPress={() => onReject(order)}
+        >
+          <Text style={styles.newOrderRejectButtonText}>Reject</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.newOrderButton,
+            styles.newOrderAcceptButton,
+            isLoading && { opacity: 0.6 },
+          ]}
+          activeOpacity={0.85}
+          disabled={isLoading}
+          onPress={() => onAccept(order)}
+        >
+          {isLoading ? (
+            <ActivityIndicator size="small" color="#FFFFFF" />
+          ) : (
+            <Text style={styles.newOrderAcceptButtonText}>Accept</Text>
+          )}
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+};
+
 const HomeScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const navigation =
@@ -441,6 +565,21 @@ const HomeScreen: React.FC = () => {
   } | null>(null);
   const [otpError, setOtpError] = useState('');
   const [otpLoading, setOtpLoading] = useState(false);
+
+  // ---- New order request (accept / reject) state ---------------------------
+  // Orders arrive with top-level orderStatus === 'PARTNER_ASSIGNED' before the
+  // partner has acted on them. `orderActionLoadingId` tracks which single
+  // order card is currently mid accept/reject call so we can show a spinner
+  // on just that card's button. Reject requires a reason, collected via
+  // `rejectModalVisible` + friends below.
+  const [orderActionLoadingId, setOrderActionLoadingId] = useState<
+    string | null
+  >(null);
+  const [rejectModalVisible, setRejectModalVisible] = useState(false);
+  const [rejectingOrder, setRejectingOrder] =
+    useState<DeliveryPartnerOrder | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const [rejectError, setRejectError] = useState('');
 
   const hasLoadedOnce = useRef(false);
 
@@ -721,6 +860,9 @@ const HomeScreen: React.FC = () => {
     return getOrderTimestamp(order);
   };
 
+  const isPartnerRejectedOrder = (o: DeliveryPartnerOrder) =>
+    (o.orderStatus?.toUpperCase() ?? '') === 'PARTNER_REJECTED';
+
   const LIVE_INNER_STATES = [
     'ACCEPTED',
     'SHIPPED',
@@ -731,6 +873,14 @@ const HomeScreen: React.FC = () => {
 
   const isOrderLive = (o: DeliveryPartnerOrder) =>
     LIVE_INNER_STATES.includes(o.orderDetails?.state?.toUpperCase() ?? '');
+
+  // A "new order request" is one the partner hasn't accepted or rejected yet.
+  // Per the service layer (see acceptOrder/rejectOrder jsdoc), these sit at
+  // top-level orderStatus === 'PARTNER_ASSIGNED'. Once accepted, the backend
+  // moves orderStatus to ACCEPTED and the order becomes eligible for the
+  // normal live-order / "Manage Delivery" flow above.
+  const isNewOrderRequest = (o: DeliveryPartnerOrder) =>
+    (o.orderStatus?.toUpperCase() ?? '') === 'PARTNER_ASSIGNED';
 
   const getTimeRangeCutoff = (range: 'today' | 'week' | 'month'): number => {
     const now = new Date();
@@ -755,6 +905,10 @@ const HomeScreen: React.FC = () => {
 
   // ---- Orders tab pipeline -------------------------------------------------
   // clearOrders: everything except UNASSIGNED.
+  // newOrderRequests: awaiting accept/reject (orderStatus PARTNER_ASSIGNED).
+  //   Rendered first, above everything else, with Accept/Reject actions.
+  //   Excluded from every other bucket below so an unactioned order never
+  //   also shows up as "live" or in history.
   // liveOrders: currently in-flight deliveries. These are ALWAYS shown in
   //   full and are intentionally NOT affected by timeRangeFilter or
   //   paymentTypeFilter — an active delivery is "current work", not
@@ -768,18 +922,33 @@ const HomeScreen: React.FC = () => {
   //   Either way, the payment type filter is then applied on top, same as
   //   before.
   const clearOrders = orders.filter(o => o.orderStatus !== 'UNASSIGNED');
-  const liveOrders = clearOrders.filter(isOrderLive);
+
+  const newOrderRequests = clearOrders.filter(isNewOrderRequest);
+  const newOrderRequestIds = new Set(
+    newOrderRequests.map(o => o.id || o.orderId),
+  );
+
+  const liveOrders = clearOrders.filter(
+    o =>
+      !newOrderRequestIds.has(o.id || o.orderId) &&
+      !isPartnerRejectedOrder(o) &&
+      isOrderLive(o),
+  );
   const liveOrderIds = new Set(liveOrders.map(o => o.id || o.orderId));
 
   const pastOrders = clearOrders.filter(
-    o => !liveOrderIds.has(o.id || o.orderId),
+    o =>
+      !liveOrderIds.has(o.id || o.orderId) &&
+      !newOrderRequestIds.has(o.id || o.orderId),
   );
 
   const customPastOrders = customOrders.filter(
     o =>
       o.orderStatus !== 'UNASSIGNED' &&
-      !isOrderLive(o) &&
-      !liveOrderIds.has(o.id || o.orderId),
+      (!isOrderLive(o) || isPartnerRejectedOrder(o)) &&
+      !isNewOrderRequest(o) &&
+      !liveOrderIds.has(o.id || o.orderId) &&
+      !newOrderRequestIds.has(o.id || o.orderId),
   );
 
   const timeFilteredOrders =
@@ -809,6 +978,67 @@ const HomeScreen: React.FC = () => {
     await logout();
   };
 
+  // ---- New order request handlers ------------------------------------------
+  const handleAcceptOrder = async (order: DeliveryPartnerOrder) => {
+    const orderMasterId = order.id || order.orderId;
+    if (!orderMasterId) return;
+    setOrderActionLoadingId(orderMasterId);
+    try {
+      await deliveryPartnerService.acceptOrder(orderMasterId);
+      // Refresh so the order flips from PARTNER_ASSIGNED -> ACCEPTED and
+      // reappears above under the live-order / Manage Delivery flow.
+      await fetchAssignedOrders({ silent: true });
+    } catch (error) {
+      console.error('Accept order failed', error);
+      Alert.alert(
+        'Unable to accept order',
+        'Please check your connection and try again.',
+      );
+    } finally {
+      setOrderActionLoadingId(null);
+    }
+  };
+
+  const openRejectModal = (order: DeliveryPartnerOrder) => {
+    setRejectingOrder(order);
+    setRejectReason('');
+    setRejectError('');
+    setRejectModalVisible(true);
+  };
+
+  const closeRejectModal = () => {
+    if (orderActionLoadingId) return;
+    setRejectModalVisible(false);
+    setRejectingOrder(null);
+    setRejectReason('');
+    setRejectError('');
+  };
+
+  const handleConfirmReject = async () => {
+    if (!rejectingOrder) return;
+    const trimmedReason = rejectReason.trim();
+    if (!trimmedReason) {
+      setRejectError('Please provide a reason for rejecting this order.');
+      return;
+    }
+    const orderMasterId = rejectingOrder.id || rejectingOrder.orderId;
+    if (!orderMasterId) return;
+    setOrderActionLoadingId(orderMasterId);
+    try {
+      await deliveryPartnerService.rejectOrder(orderMasterId, trimmedReason);
+      setRejectModalVisible(false);
+      setRejectingOrder(null);
+      setRejectReason('');
+      setRejectError('');
+      await fetchAssignedOrders({ silent: true });
+    } catch (error) {
+      console.error('Reject order failed', error);
+      setRejectError('Unable to reject order. Please try again.');
+    } finally {
+      setOrderActionLoadingId(null);
+    }
+  };
+
   const formatOrderDateTime = (value: string | null) => {
     const parsedDate = parseDateValue(value);
     if (!parsedDate) return { date: 'N/A', time: '' };
@@ -821,6 +1051,148 @@ const HomeScreen: React.FC = () => {
         minute: '2-digit',
       }),
     };
+  };
+
+  const parseTimestamp = (
+    value: string | number | null | undefined,
+  ): number | null => {
+    if (value === null || value === undefined || value === '') {
+      return null;
+    }
+
+    // Already a number
+    if (typeof value === 'number') {
+      if (!Number.isFinite(value)) {
+        return null;
+      }
+
+      // Milliseconds timestamp
+      if (value > 10_000_000_000) {
+        return value;
+      }
+
+      // Seconds timestamp
+      if (value > 1_000_000_000) {
+        return value * 1000;
+      }
+
+      return null;
+    }
+
+    const trimmedValue = value.trim();
+
+    if (!trimmedValue) {
+      return null;
+    }
+
+    // Numeric string timestamp
+    if (/^\d+$/.test(trimmedValue)) {
+      const numericValue = Number(trimmedValue);
+
+      if (!Number.isFinite(numericValue)) {
+        return null;
+      }
+
+      // Milliseconds
+      if (numericValue > 10_000_000_000) {
+        return numericValue;
+      }
+
+      // Seconds
+      if (numericValue > 1_000_000_000) {
+        return numericValue * 1000;
+      }
+
+      return null;
+    }
+
+    // ISO format / standard date format
+    let dateValue = trimmedValue;
+
+    // Convert SQL datetime:
+    // "2026-07-03 13:39:35"
+    // to:
+    // "2026-07-03T13:39:35"
+    if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(dateValue)) {
+      dateValue = dateValue.replace(' ', 'T');
+    }
+
+    const parsedDate = new Date(dateValue);
+
+    if (!Number.isNaN(parsedDate.getTime())) {
+      return parsedDate.getTime();
+    }
+
+    return null;
+  };
+
+  const calculateTimeDifference = (
+    startTime: string | number | null | undefined,
+    endTime: string | number | null | undefined,
+  ): string => {
+    console.log('calculateTimeDifference called with:', startTime, endTime);
+
+    const startMs = parseTimestamp(startTime);
+    const endMs = parseTimestamp(endTime);
+
+    if (startMs === null || endMs === null) {
+      return '-';
+    }
+
+    const diffMs = endMs - startMs;
+
+    // If end time is before start time
+    if (diffMs < 0) {
+      return '-';
+    }
+
+    const diffMins = Math.floor(diffMs / 60000);
+
+    if (diffMins < 1) {
+      return '< 1m';
+    }
+
+    if (diffMins < 60) {
+      return `${diffMins}m`;
+    }
+
+    const hours = Math.floor(diffMins / 60);
+    const mins = diffMins % 60;
+
+    return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+  };
+
+  // ── Extract time from timestamp ──
+  const getTimeFromTimestamp = (
+    timestamp: string | number | null | undefined,
+  ): string => {
+    if (!timestamp) return 'N/A';
+
+    const num = typeof timestamp === 'string' ? Number(timestamp) : timestamp;
+
+    if (Number.isFinite(num) && num > 0) {
+      const date = new Date(num > 10000000000 ? num : num * 1000);
+      if (!isNaN(date.getTime())) {
+        return date.toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: true,
+        });
+      }
+    }
+
+    if (typeof timestamp === 'string') {
+      const date = new Date(timestamp);
+      if (!isNaN(date.getTime())) {
+        return date.toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: true,
+        });
+      }
+    }
+
+    return 'N/A';
   };
 
   const formatCurrency = (amount: number) =>
@@ -1188,6 +1560,76 @@ const HomeScreen: React.FC = () => {
     );
   };
 
+  // ── Reject-with-reason modal ──
+  // Shown when the partner taps "Reject" on a New Order Request card. A
+  // reason is required by the API (see rejectOrder in the service), so the
+  // Confirm button stays disabled/error-guarded until one is entered.
+  const renderRejectReasonModal = () => (
+    <Modal
+      visible={rejectModalVisible}
+      transparent
+      animationType="fade"
+      onRequestClose={closeRejectModal}
+    >
+      <Pressable style={styles.modalBackdrop} onPress={closeRejectModal}>
+        <Pressable style={styles.customModalCard} onPress={() => null}>
+          <View style={styles.customModalHeader}>
+            <Text style={styles.customModalTitle}>Reject Order</Text>
+          </View>
+
+          <Text style={styles.sectionSubText}>
+            Let us know why you're rejecting order #
+            {rejectingOrder?.orderId || rejectingOrder?.id}
+          </Text>
+
+          <TextInput
+            style={styles.rejectReasonInput}
+            placeholder="Enter reason for rejection..."
+            placeholderTextColor="#94A3B8"
+            value={rejectReason}
+            onChangeText={text => {
+              setRejectReason(text);
+              if (rejectError) setRejectError('');
+            }}
+            multiline
+            numberOfLines={3}
+            editable={orderActionLoadingId === null}
+          />
+
+          {!!rejectError && (
+            <Text style={styles.dateValidationError}>{rejectError}</Text>
+          )}
+
+          <View style={styles.customModalActions}>
+            <TouchableOpacity
+              style={styles.customModalCancelBtn}
+              onPress={closeRejectModal}
+              disabled={orderActionLoadingId !== null}
+            >
+              <Text style={styles.customModalCancelText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.customModalApplyBtn,
+                styles.rejectConfirmBtn,
+                orderActionLoadingId !== null &&
+                  styles.customModalApplyBtnDisabled,
+              ]}
+              disabled={orderActionLoadingId !== null}
+              onPress={handleConfirmReject}
+            >
+              {orderActionLoadingId !== null ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Text style={styles.customModalApplyText}>Confirm Reject</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+
   const renderOrderCard = (order: DeliveryPartnerOrder) => {
     const cardId = order.id || order.orderId;
     const isExpanded = expandedOrderIds.has(cardId);
@@ -1201,12 +1643,32 @@ const HomeScreen: React.FC = () => {
       order.orderDetails?.creationTime ?? order.createdAt,
     );
     const shopName = order.shopDetails?.name || 'Shop';
+
+    // ── Order stage timestamps ──
+    const assignedAtDateTime = formatOrderDateTime(
+      order?.assignedAt ? String(order.assignedAt) : null,
+    );
+    const arrivedAtStoreDateTime = formatOrderDateTime(
+      order?.arrivedAtStoreAt ? String(order.arrivedAtStoreAt) : null,
+    );
+    const pickedUpDateTime = formatOrderDateTime(
+      order?.pickedUpAt ? String(order.pickedUpAt) : null,
+    );
+    const reachedLocationDateTime = formatOrderDateTime(
+      order?.reachedLocationAt ? String(order.reachedLocationAt) : null,
+    );
+    const deliveredAtDateTime = formatOrderDateTime(
+      order?.deliveredAt ? String(order.deliveredAt) : null,
+    );
+
     const customerName =
       order.orderDetails?.customerName || order.orderId || 'N/A';
     const status = formatStatusLabel(
-      order.orderDetails?.state?.toUpperCase() ??
-        order.orderStatus?.toUpperCase() ??
-        'UNKNOWN',
+      isPartnerRejectedOrder(order)
+        ? 'PARTNER_REJECTED'
+        : order.orderDetails?.state?.toUpperCase() ??
+            order.orderStatus?.toUpperCase() ??
+            'UNKNOWN',
     );
     const shopId = order.orderDetails?.shopId ?? order.shopId;
 
@@ -1344,7 +1806,6 @@ const HomeScreen: React.FC = () => {
                 </Text>
               </TouchableOpacity>
             </View>
-
             <View style={styles.sectionBlock}>
               <Text style={styles.sectionTitleInline}>Shop details</Text>
               <View style={styles.shopHeroRow}>
@@ -1388,7 +1849,6 @@ const HomeScreen: React.FC = () => {
                 <Text style={styles.directionButtonText}>Get Directions</Text>
               </TouchableOpacity>
             </View>
-
             <View style={styles.sectionBlock}>
               <Text style={styles.sectionTitleInline}>Order details</Text>
               <Text style={styles.sectionSubText}>{orderDescription}</Text>
@@ -1440,6 +1900,217 @@ const HomeScreen: React.FC = () => {
               gstRate={pricing.gstRate}
               finance={order?.finance}
             />
+            {/* ── COMPACT DELIVERY TIMELINE ── */}
+            <View style={styles.sectionBlock}>
+              <Text style={styles.sectionTitleInline}>Delivery Timeline</Text>
+
+              {/* Compact timeline container */}
+              <View style={styles.compactTimelineContainer}>
+                {/* Order Placed - Always shown */}
+                <View style={styles.compactTimelineStage}>
+                  <View
+                    style={[styles.compactDot, { backgroundColor: '#0E6DFD' }]}
+                  />
+                  <View style={styles.compactStageInfo}>
+                    <Text style={styles.compactStageLabel}>Order Placed</Text>
+                    <Text style={styles.compactStageTime}>
+                      {orderDateTime.time !== 'N/A'
+                        ? orderDateTime.time
+                        : 'N/A'}
+                    </Text>
+                  </View>
+                </View>
+                {/* Interval & Assigned At */}
+                {assignedAtDateTime.date !== 'N/A' && (
+                  <View style={styles.compactTimelineStage}>
+                    <View
+                      style={[
+                        styles.compactDot,
+                        { backgroundColor: '#0E6DFD' },
+                      ]}
+                    />
+
+                    <View style={styles.compactStageInfo}>
+                      <Text
+                        style={[styles.compactStageLabel, { color: '#0E6DFD' }]}
+                      >
+                        Assigned At
+                      </Text>
+
+                      <Text
+                        style={[styles.compactStageTime, { color: '#0E6DFD' }]}
+                      >
+                        {assignedAtDateTime.time || assignedAtDateTime.date}
+                      </Text>
+                    </View>
+
+                    <View style={styles.compactIntervalBadge}>
+                      <Text style={styles.compactIntervalBadgeText}>
+                        {calculateTimeDifference(
+                          order?.orderDetails?.creationTime ?? order?.createdAt,
+                          order?.assignedAt,
+                        )}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+                {/* Interval & Arrived at Store */}
+                {arrivedAtStoreDateTime.date !== 'N/A' && (
+                  <View style={styles.compactTimelineStage}>
+                    <View
+                      style={[
+                        styles.compactDot,
+                        { backgroundColor: '#0E6DFD' },
+                      ]}
+                    />
+
+                    <View style={styles.compactStageInfo}>
+                      <Text
+                        style={[styles.compactStageLabel, { color: '#0E6DFD' }]}
+                      >
+                        Arrived at Store
+                      </Text>
+
+                      <Text
+                        style={[styles.compactStageTime, { color: '#0E6DFD' }]}
+                      >
+                        {arrivedAtStoreDateTime.time ||
+                          arrivedAtStoreDateTime.date}
+                      </Text>
+                    </View>
+
+                    <View style={styles.compactIntervalBadge}>
+                      <Text style={styles.compactIntervalBadgeText}>
+                        {calculateTimeDifference(
+                          order?.assignedAt,
+                          order?.arrivedAtStoreAt,
+                        )}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+                {/* Interval & Picked Up */}
+                {pickedUpDateTime.date !== 'N/A' && (
+                  <View style={styles.compactTimelineStage}>
+                    <View
+                      style={[
+                        styles.compactDot,
+                        { backgroundColor: '#0E6DFD' },
+                      ]}
+                    />
+
+                    <View style={styles.compactStageInfo}>
+                      <Text
+                        style={[styles.compactStageLabel, { color: '#0E6DFD' }]}
+                      >
+                        Picked Up
+                      </Text>
+
+                      <Text
+                        style={[styles.compactStageTime, { color: '#0E6DFD' }]}
+                      >
+                        {pickedUpDateTime.time || pickedUpDateTime.date}
+                      </Text>
+                    </View>
+
+                    <View style={styles.compactIntervalBadge}>
+                      <Text style={styles.compactIntervalBadgeText}>
+                        {calculateTimeDifference(
+                          order?.arrivedAtStoreAt,
+                          order?.pickedUpAt,
+                        )}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+                {/* Interval & Reached Destination */}
+                {reachedLocationDateTime.date !== 'N/A' && (
+                  <View style={styles.compactTimelineStage}>
+                    <View
+                      style={[
+                        styles.compactDot,
+                        { backgroundColor: '#0E6DFD' },
+                      ]}
+                    />
+
+                    <View style={styles.compactStageInfo}>
+                      <Text
+                        style={[styles.compactStageLabel, { color: '#0E6DFD' }]}
+                      >
+                        Reached Destination
+                      </Text>
+
+                      <Text
+                        style={[styles.compactStageTime, { color: '#0E6DFD' }]}
+                      >
+                        {reachedLocationDateTime.time ||
+                          reachedLocationDateTime.date}
+                      </Text>
+                    </View>
+
+                    <View style={styles.compactIntervalBadge}>
+                      <Text style={styles.compactIntervalBadgeText}>
+                        {calculateTimeDifference(
+                          order?.pickedUpAt,
+                          order?.reachedLocationAt,
+                        )}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+
+                {/* Interval & Delivered */}
+                {deliveredAtDateTime.date !== 'N/A' && (
+                  <View style={styles.compactTimelineStage}>
+                    <View
+                      style={[
+                        styles.compactDot,
+                        { backgroundColor: '#16A34A' },
+                      ]}
+                    />
+
+                    <View style={styles.compactStageInfo}>
+                      <Text
+                        style={[styles.compactStageLabel, { color: '#16A34A' }]}
+                      >
+                        Delivered
+                      </Text>
+
+                      <Text
+                        style={[styles.compactStageTime, { color: '#16A34A' }]}
+                      >
+                        {deliveredAtDateTime.time || deliveredAtDateTime.date}
+                      </Text>
+                    </View>
+
+                    <View style={styles.compactIntervalBadge}>
+                      <Text style={styles.compactIntervalBadgeText}>
+                        {calculateTimeDifference(
+                          order?.reachedLocationAt,
+                          order?.deliveredAt,
+                        )}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+              </View>
+
+              {/* Total Delivery Time Summary */}
+              {orderDateTime.date !== 'N/A' &&
+                deliveredAtDateTime.date !== 'N/A' && (
+                  <View style={styles.compactTotalTimeRow}>
+                    <Text style={styles.compactTotalTimeLabel}>
+                      Total Delivery Time
+                    </Text>
+                    <Text style={styles.compactTotalTimeValue}>
+                      {calculateTimeDifference(
+                        order?.orderDetails?.creationTime ?? order?.createdAt,
+                        order?.deliveredAt,
+                      )}
+                    </Text>
+                  </View>
+                )}
+            </View>
             {!!order.orderDetails?.orderLink && (
               <TouchableOpacity
                 style={styles.viewDetailsButton}
@@ -1928,6 +2599,18 @@ const HomeScreen: React.FC = () => {
               </Text>
             ) : (
               <>
+                {newOrderRequests.map(order => (
+                  <NewOrderRequestCard
+                    key={order.id || order.orderId}
+                    order={order}
+                    isLoading={
+                      orderActionLoadingId === (order.id || order.orderId)
+                    }
+                    onAccept={handleAcceptOrder}
+                    onReject={openRejectModal}
+                  />
+                ))}
+
                 {liveOrders.map(order => (
                   <LiveOrderCard
                     key={order.id || order.orderId}
@@ -2065,6 +2748,7 @@ const HomeScreen: React.FC = () => {
         onCancel={handleOtpCancel}
       />
       {renderCustomDateModal()}
+      {renderRejectReasonModal()}
     </View>
   );
 };
@@ -2277,10 +2961,11 @@ const styles = StyleSheet.create({
     color: '#0F172A',
   },
   orderCardOrderId: {
-    fontSize: 11,
-    fontFamily: FONT_FAMILY.outfitRegular,
-    color: '#94A3B8',
-    marginTop: 1,
+    fontSize: 16,
+    fontFamily: FONT_FAMILY.bricolageBold,
+    color: '#0F172A',
+    marginTop: 3,
+    letterSpacing: 0.3,
   },
   orderCardSummary: {
     fontSize: 12,
@@ -2886,6 +3571,132 @@ const styles = StyleSheet.create({
     marginHorizontal: 2,
     marginBottom: 14,
   },
+  // ── Compact Timeline Styles (NEW) ──
+  compactTimelineContainer: {
+    marginTop: 12,
+    paddingVertical: 10,
+  },
+  compactTimelineStage: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 0,
+  },
+
+  compactDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 12,
+    flexShrink: 0,
+  },
+
+  compactStageInfo: {
+    flex: 1,
+  },
+
+  compactStageLabel: {
+    fontSize: 13,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#1E293B',
+  },
+
+  compactStageTime: {
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.outfitRegular,
+    marginTop: 2,
+  },
+
+  compactIntervalBadge: {
+    minWidth: 42,
+    height: 28,
+    paddingHorizontal: 8,
+    borderRadius: 14,
+    backgroundColor: '#F1F5F9',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 12,
+  },
+
+  compactIntervalBadgeText: {
+    fontSize: 10,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#64748B',
+  },
+  compactIntervalText: {
+    fontSize: 16,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#94A3B8',
+    fontStyle: 'italic',
+  },
+  compactTotalTimeRow: {
+    marginTop: 14,
+    paddingTop: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+    borderRadius: 12,
+    backgroundColor: '#F0F9FF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  compactTotalTimeLabel: {
+    fontSize: 13,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#475569',
+  },
+  compactTotalTimeValue: {
+    fontSize: 14,
+    fontFamily: FONT_FAMILY.bricolageBold,
+    color: '#0E6DFD',
+  },
+  // ── New order request card (accept / reject) ───────────────────────────────
+  newOrderCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 2,
+    borderColor: '#F59E0B',
+    shadowColor: '#F59E0B',
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 5,
+    marginBottom: 16,
+  },
+  newOrderActionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 14,
+  },
+  newOrderButton: {
+    flex: 1,
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+  },
+  newOrderAcceptButton: { backgroundColor: '#16A34A' },
+  newOrderAcceptButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontFamily: FONT_FAMILY.outfitExtraBold,
+  },
+  newOrderRejectButton: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FCA5A5',
+  },
+  newOrderRejectButtonText: {
+    color: '#DC2626',
+    fontSize: 14,
+    fontFamily: FONT_FAMILY.outfitExtraBold,
+  },
   // ── Custom date modal ──────────────────────────────────────────────────────
   modalBackdrop: {
     flex: 1,
@@ -2998,9 +3809,11 @@ const styles = StyleSheet.create({
   customModalApplyBtn: {
     flex: 2,
     alignItems: 'center',
+    justifyContent: 'center',
     paddingVertical: 12,
     borderRadius: 12,
     backgroundColor: '#0f62fe',
+    minHeight: 44,
   },
   customModalApplyBtnDisabled: {
     backgroundColor: '#93c5fd',
@@ -3009,6 +3822,103 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#ffffff',
     fontFamily: FONT_FAMILY.outfitBold,
+  },
+  rejectConfirmBtn: {
+    backgroundColor: '#DC2626',
+  },
+  rejectReasonInput: {
+    marginTop: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: '#0F172A',
+    fontFamily: FONT_FAMILY.outfitRegular,
+    minHeight: 80,
+    textAlignVertical: 'top',
+  },
+  // ── Timeline Event Styles ──
+  timelineEventRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginTop: 12,
+    marginBottom: 12,
+    paddingLeft: 8,
+  },
+  timelineEventDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#0E6DFD',
+    marginTop: 2,
+    marginRight: 12,
+    flexShrink: 0,
+  },
+  timelineEventContent: {
+    flex: 1,
+  },
+  timelineEventLabel: {
+    fontSize: 13,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#0F172A',
+  },
+  timelineEventTime: {
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.outfitRegular,
+    color: '#0E6DFD',
+    marginTop: 2,
+  },
+  timelineEventTimeNA: {
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.outfitRegular,
+    color: '#94A3B8',
+    marginTop: 2,
+  },
+  // ── Enhanced Timeline Styles ──
+  intervalBadge: {
+    marginTop: 6,
+    alignSelf: 'flex-start',
+    backgroundColor: '#0E6DFD',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    minWidth: 45,
+  },
+  intervalBadgeText: {
+    fontSize: 10,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#FFFFFF',
+    textAlign: 'center',
+  },
+  totalTimeContainer: {
+    marginTop: 12,
+    alignItems: 'center',
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+  },
+  totalTimeCircle: {
+    backgroundColor: '#F0F9FF',
+    borderRadius: 50,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    minWidth: 140,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#0E6DFD',
+  },
+  totalTimeLabel: {
+    fontSize: 11,
+    fontFamily: FONT_FAMILY.outfitRegular,
+    color: '#64748B',
+    marginBottom: 4,
+  },
+  totalTimeValue: {
+    fontSize: 16,
+    fontFamily: FONT_FAMILY.outfitExtraBold,
+    color: '#0E6DFD',
   },
 });
 
