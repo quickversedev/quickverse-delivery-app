@@ -251,8 +251,12 @@ const toggleDeliveryPartnerOnlineStatus = async (
 const normalizePartnerOrder = (order: any): DeliveryPartnerOrder => ({
   id: String(order?.id ?? ''),
   assignedAt: order?.assignedAt ? String(order.assignedAt) : null,
-  arrivedAtStoreAt: order?.arrivedAtStoreAt ? String(order.arrivedAtStoreAt) : null,
-  reachedLocationAt: order?.reachedLocationAt ? String(order.reachedLocationAt) : null,
+  arrivedAtStoreAt: order?.arrivedAtStoreAt
+    ? String(order.arrivedAtStoreAt)
+    : null,
+  reachedLocationAt: order?.reachedLocationAt
+    ? String(order.reachedLocationAt)
+    : null,
   pickedUpAt: order?.pickedUpAt ? String(order.pickedUpAt) : null,
   deliveredAt: order?.deliveredAt ? String(order.deliveredAt) : null,
   orderId: String(order?.orderId ?? ''),
@@ -714,6 +718,48 @@ const arriveAtDestination = async (orderMasterId: string): Promise<void> => {
   );
 };
 
+const generatePaymentQr = async (orderId: string) => {
+  try {
+    const sessionKey = await TokenStorage.getToken();
+
+    const response = await apiCall(
+      axiosInstance.post(
+        `/quickVerse/v3/payment/qr/${orderId}?fixedAmount=true`,
+        null,
+        {
+          headers: {
+            SessionKey: sessionKey || '',
+            'Request-Origin': 'TRANSPORTER',
+          },
+        },
+      ),
+    );
+
+    return response;
+  } catch (error) {
+    console.log('Error generating payment QR code:', error);
+  }
+};
+
+const getPaymentQrStatus = async (orderId: string) => {
+  try {
+    const sessionKey = await TokenStorage.getToken();
+
+    const response = await apiCall(
+      axiosInstance.get(`/quickVerse/v3/payment/qr/status-check/${orderId}`, {
+        headers: {
+          SessionKey: sessionKey || '',
+          'Request-Origin': 'TRANSPORTER',
+        },
+      }),
+    );
+
+    return response;
+  } catch (error) {
+    console.log('Error fetching payment QR status:', error);
+  }
+};
+
 const completeDelivery = async (
   orderMasterId: string,
   paymentProofImageUri?: string | null,
@@ -753,6 +799,8 @@ const completeDelivery = async (
 };
 
 const deliveryPartnerService = {
+  generatePaymentQr,
+  getPaymentQrStatus,
   getDeliveryPartnerById,
   toggleDeliveryPartnerOnlineStatus,
   getAssignedOrdersByPartnerId,

@@ -23,12 +23,12 @@ const showToast = (message: string) => {
 };
 
 export const API_CONFIG = {
-  // baseURL: 'https://superscientifically-revengeless-ronald.ngrok-free.dev',
+  baseURL: 'https://superscientifically-revengeless-ronald.ngrok-free.dev',
   // ankit's IP
   // local backend (use for testing new features)
   // baseURL: 'http://10.0.2.2:8080',
   // production
-  baseURL: 'http://prd.quickverse.in',
+  // baseURL: 'http://prd.quickverse.in',
   // baseURL: 'https://console-wharf-overplant.ngrok-free.dev',
   timeout: 15000,
   headers: {
@@ -75,14 +75,14 @@ const logApiRequest = (config: any) => {
     config?.url || ''
   }`;
 
-  console.log(
-    `[API REQUEST] ${method} ${url}`,
-    formatJsonForLog({
-      params: config?.params,
-      data: config?.data,
-      headers: config?.headers,
-    }),
-  );
+  // console.log(
+  //   `[API REQUEST] ${method} ${url}`,
+  //   formatJsonForLog({
+  //     params: config?.params,
+  //     data: config?.data,
+  //     headers: config?.headers,
+  //   }),
+  // );
 
   return config;
 };
@@ -97,13 +97,13 @@ const logApiResponse = (response: any) => {
     response?.config?.url || ''
   }`;
 
-  console.log(
-    `[API RESPONSE] ${method} ${url} ${response?.status || ''}`.trim(),
-    formatJsonForLog({
-      data: response?.data,
-      headers: response?.headers,
-    }),
-  );
+  // console.log(
+  //   `[API RESPONSE] ${method} ${url} ${response?.status || ''}`.trim(),
+  //   formatJsonForLog({
+  //     data: response?.data,
+  //     headers: response?.headers,
+  //   }),
+  // );
 
   return response;
 };
