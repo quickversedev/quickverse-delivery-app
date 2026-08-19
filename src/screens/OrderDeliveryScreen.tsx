@@ -569,7 +569,7 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
   const pricing = getPricingValues(serviceType);
   const subtotal = order.orderDetails?.amountExcludingDeliveryFee ?? 0;
   const commission = pricing.commissionRate * subtotal;
-  const taxableAmount = commission + pricing.deliveryFee + pricing.platformFee;
+  const taxableAmount = pricing.deliveryFee + pricing.platformFee;
   const taxes = Math.round(pricing.gstRate * taxableAmount);
   const computedTotal =
     subtotal +

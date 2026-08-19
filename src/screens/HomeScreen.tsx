@@ -113,7 +113,7 @@ const LiveOrderCard: React.FC<LiveOrderCardProps> = ({ order }) => {
   const liveCommission =
     livePricing.commissionRate * liveAmountExcludingDeliveryFee;
   const liveTaxableAmount =
-    liveCommission + livePricing.deliveryFee + livePricing.platformFee;
+    livePricing.deliveryFee + livePricing.platformFee;
   const liveTaxes = Math.round(livePricing.gstRate * liveTaxableAmount);
   const liveComputedTotal =
     liveAmountExcludingDeliveryFee +
@@ -1733,7 +1733,7 @@ const HomeScreen: React.FC = () => {
     const pricingCommission =
       pricing.commissionRate * amountExcludingDeliveryFee;
     const pricingTaxableAmount =
-      pricingCommission + pricing.deliveryFee + pricing.platformFee;
+      pricing.deliveryFee + pricing.platformFee;
     const pricingTaxes = Math.round(pricing.gstRate * pricingTaxableAmount);
     const computedTotal =
       amountExcludingDeliveryFee +
