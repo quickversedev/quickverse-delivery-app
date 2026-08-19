@@ -114,6 +114,86 @@ export type DeliveryPartnerShopAddress = {
   longitude: number | null;
 };
 
+export type ReportedAddressPayload = {
+  addressId: string;
+  customerId: string;
+  reportedByPartnerId: string;
+  latitude: number;
+  longitude: number;
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  landmark?: string | null;
+  city?: string | null;
+  state?: string | null;
+  pincode?: string | null;
+  reason?: string | null;
+};
+
+export type ReportedAddress = ReportedAddressPayload & {
+  id?: string;
+  createdAt?: string | null;
+};
+
+export const normalizeOrderStatus = (
+  status?: string | null,
+):
+  | 'ACCEPTED'
+  | 'ARRIVED_AT_STORE'
+  | 'ORDER_PICKED_UP'
+  | 'ARRIVED_AT_LOCATION'
+  | 'DELIVERED'
+  | 'UNKNOWN' => {
+  const normalized = `${status ?? ''}`.trim().toUpperCase();
+
+  if (!normalized) return 'UNKNOWN';
+  if (normalized === 'PARTNER_ASSIGNED' || normalized === 'ACCEPTED')
+    return 'ACCEPTED';
+  if (normalized === 'ARRIVED_AT_STORE') return 'ARRIVED_AT_STORE';
+  if (normalized === 'ORDER_PICKED_UP' || normalized === 'PICKED_UP')
+    return 'ORDER_PICKED_UP';
+  if (normalized === 'ARRIVED_AT_LOCATION' || normalized === 'REACHED_LOCATION')
+    return 'ARRIVED_AT_LOCATION';
+  if (normalized === 'DELIVERED') return 'DELIVERED';
+  return 'UNKNOWN';
+};
+
+export const validateReportedAddressPayload = (
+  payload: Partial<ReportedAddressPayload>,
+): ReportedAddressPayload => {
+  const addressId = String(payload.addressId ?? '').trim();
+  const customerId = String(payload.customerId ?? '').trim();
+  const reportedByPartnerId = String(payload.reportedByPartnerId ?? '').trim();
+
+  if (!addressId) throw new Error('addressId is required');
+  if (!customerId) throw new Error('customerId is required');
+  if (!reportedByPartnerId) throw new Error('reportedByPartnerId is required');
+
+  const latitude = Number(payload.latitude);
+  const longitude = Number(payload.longitude);
+
+  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
+    throw new Error('latitude must be between -90 and 90');
+  }
+  if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+    throw new Error('longitude must be between -180 and 180');
+  }
+
+  return {
+    addressId,
+    customerId,
+    reportedByPartnerId,
+    latitude,
+    longitude,
+    addressLine1: payload.addressLine1 ?? null,
+    addressLine2: payload.addressLine2 ?? null,
+    landmark: payload.landmark ?? null,
+    city: payload.city ?? null,
+    state: payload.state ?? null,
+    pincode: payload.pincode ?? null,
+    reason: payload.reason ?? null,
+  };
+};
+
 export type DeliveryPartnerShopCoordinates = {
   latitude: number | null;
   longitude: number | null;
@@ -562,6 +642,45 @@ const updateAssignedOrderStatus = async (
   );
 };
 
+const createReportedAddress = async (
+  payload: Partial<ReportedAddressPayload>,
+): Promise<ReportedAddress> => {
+  const sessionKey = await TokenStorage.getToken();
+  const request = validateReportedAddressPayload(payload);
+
+  return apiCall<ReportedAddress>(
+    axiosInstance.post('/v1/reported-address', request, {
+      headers: {
+        SessionKey: sessionKey || '',
+        Authorization: `Bearer ${sessionKey || ''}`,
+        'Request-Origin': 'TRANSPORTER',
+      },
+      validateStatus: status => status >= 200 && status < 400,
+    }),
+  );
+};
+
+const getReportedAddressesByCustomer = async (
+  customerId: string,
+): Promise<ReportedAddress[]> => {
+  const sessionKey = await TokenStorage.getToken();
+
+  const data = await apiCall<any>(
+    axiosInstance.get(`/v1/reported-address/customer/${customerId}`, {
+      headers: {
+        SessionKey: sessionKey || '',
+        Authorization: `Bearer ${sessionKey || ''}`,
+        'Request-Origin': 'TRANSPORTER',
+      },
+      validateStatus: status => status >= 200 && status < 400,
+    }),
+  );
+
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.data)) return data.data;
+  return [];
+};
+
 /**
  * Accept a newly-assigned order. Called from the "New Order Request" card
  * (before any delivery-stage progression begins). On success the order's
@@ -807,6 +926,8 @@ const deliveryPartnerService = {
   updateAssignedOrderStatus,
   acceptOrder,
   rejectOrder,
+  createReportedAddress,
+  getReportedAddressesByCustomer,
   updateDeliveryPartnerLocation,
   getDeliveryPartnerStats,
   arriveAtStore,

@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   Linking,
   StyleSheet,
+  TextInput,
   Alert,
   ActivityIndicator,
   Image,
@@ -45,6 +46,7 @@ import images from '../assets/images';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const MAP_HEIGHT = SCREEN_HEIGHT * 0.38;
+const REPORT_MAP_HEIGHT = 210;
 
 const MODAL_IMAGE_WIDTH = SCREEN_WIDTH * 0.9;
 const MODAL_IMAGE_MAX_HEIGHT = SCREEN_HEIGHT * 0.75;
@@ -97,6 +99,12 @@ interface ParsedAddress {
   text: string;
   latitude: number | null;
   longitude: number | null;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  landmark: string | null;
+  city: string | null;
+  state: string | null;
+  pincode: string | null;
 }
 
 const STAGE_CONFIG: Record<string, StageConfig> = {
@@ -123,6 +131,12 @@ const STAGE_CONFIG: Record<string, StageConfig> = {
     buttonLabel: 'Mark Arrived at Destination',
     buttonColor: '#0891B2',
     apiAction: 'arriveDestination',
+  },
+  ARRIVED_AT_LOCATION: {
+    stageIndex: 3,
+    buttonLabel: 'Mark as Delivered',
+    buttonColor: '#16A34A',
+    apiAction: 'completeDelivery',
   },
   REACHED_LOCATION: {
     stageIndex: 3,
@@ -248,7 +262,18 @@ const CustomerMarker: React.FC<{ name?: string }> = ({ name }) => (
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const parseCustomerAddress = (rawAddress: string | null): ParsedAddress => {
-  if (!rawAddress) return { text: 'N/A', latitude: null, longitude: null };
+  if (!rawAddress)
+    return {
+      text: 'N/A',
+      latitude: null,
+      longitude: null,
+      addressLine1: null,
+      addressLine2: null,
+      landmark: null,
+      city: null,
+      state: null,
+      pincode: null,
+    };
   const cleaned = rawAddress.replace(/^\{/, '').replace(/\}$/, '');
   const entries = [...cleaned.matchAll(/(\w+)=([^,]+(?:,(?!\s*\w+=)[^,]+)*)/g)];
   const map: Record<string, string> = {};
@@ -271,6 +296,14 @@ const parseCustomerAddress = (rawAddress: string | null): ParsedAddress => {
     text: formattedAddress || cleaned,
     latitude: Number.isFinite(latitude ?? NaN) ? latitude : null,
     longitude: Number.isFinite(longitude ?? NaN) ? longitude : null,
+    addressLine1: map.addressLine1 || null,
+    addressLine2: map.addressLine2 || null,
+    // Some payloads use addressLine3 for a landmark-style third line;
+    // fall back to an explicit `landmark` key if the backend ever sends one.
+    landmark: map.addressLine3 || map.landmark || null,
+    city: map.city || null,
+    state: map.state || null,
+    pincode: map.pincode || null,
   };
 };
 
@@ -454,6 +487,25 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
   );
   const [evidenceImage, setEvidenceImage] = useState<string | null>(null);
   const [qrModalVisible, setQrModalVisible] = useState(false);
+
+  // ── Reported-address modal state ──
+  const [reportModalVisible, setReportModalVisible] = useState(false);
+  const [reportReason, setReportReason] = useState('');
+  const [reportAddressId, setReportAddressId] = useState('');
+  const [reportAddressLine1, setReportAddressLine1] = useState('');
+  const [reportAddressLine2, setReportAddressLine2] = useState('');
+  const [reportLandmark, setReportLandmark] = useState('');
+  const [reportCity, setReportCity] = useState('');
+  const [reportState, setReportState] = useState('');
+  const [reportPincode, setReportPincode] = useState('');
+  // The pin the delivery partner can drag / tap on the mini-map. This is
+  // what actually gets submitted as latitude/longitude — it starts at the
+  // partner's live GPS position (falling back to the customer's last known
+  // coordinates) and can be repositioned freely from there.
+  const [reportPinCoord, setReportPinCoord] = useState<CoordinateData | null>(
+    null,
+  );
+  const [reportSubmitting, setReportSubmitting] = useState(false);
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [storeContactView, setStoreContactView] = useState<
     'vendor' | 'customer'
@@ -529,6 +581,7 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
     'ACCEPTED'
   ).toUpperCase();
   const config = STAGE_CONFIG[orderStatus] ?? STAGE_CONFIG['ACCEPTED'];
+  console.log('Normalized Order Status : ', orderStatus);
 
   const customerAddress = parseCustomerAddress(
     order.orderDetails?.customerAddress ?? null,
@@ -934,6 +987,151 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
     return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
   };
 
+  useEffect(() => {
+    if (!reportAddressId && order.orderId) {
+      setReportAddressId(`ADDR_${order.orderId}`);
+    }
+  }, [order.orderId, reportAddressId]);
+
+  // ── Reset + prefill the reported-address form each time it's opened ──
+  // Starts the pin at the delivery partner's live GPS location (falling back
+  // to the customer's last known coordinates), and prefills whatever address
+  // fields we can parse from the existing order so the partner only has to
+  // correct what's actually wrong.
+  const resetReportForm = useCallback(() => {
+    setReportAddressLine1('');
+    setReportAddressLine2('');
+    setReportLandmark('');
+    setReportCity('');
+    setReportState('');
+    setReportPincode('');
+    setReportReason('');
+    setReportPinCoord(null);
+    if (order.orderId) {
+      setReportAddressId(`ADDR_${order.orderId}`);
+    }
+  }, [order.orderId]);
+
+  const openReportModal = useCallback(() => {
+    const startCoord = partnerCoord ?? customerCoord ?? null;
+    setReportPinCoord(startCoord);
+    setReportAddressLine1(customerAddress.addressLine1 ?? '');
+    setReportAddressLine2(customerAddress.addressLine2 ?? '');
+    setReportLandmark(customerAddress.landmark ?? '');
+    setReportCity(
+      customerAddress.city ?? order.shopDetails?.address?.city ?? '',
+    );
+    setReportState(
+      customerAddress.state ?? order.shopDetails?.address?.state ?? '',
+    );
+    setReportPincode(
+      customerAddress.pincode ?? order.shopDetails?.address?.postalCode ?? '',
+    );
+    setReportReason('');
+    setReportModalVisible(true);
+  }, [
+    partnerCoord,
+    customerCoord,
+    customerAddress.addressLine1,
+    customerAddress.addressLine2,
+    customerAddress.landmark,
+    customerAddress.city,
+    customerAddress.state,
+    customerAddress.pincode,
+    order.shopDetails?.address?.city,
+    order.shopDetails?.address?.state,
+    order.shopDetails?.address?.postalCode,
+  ]);
+
+  // Snap the pin back to the partner's current GPS fix.
+  const useMyCurrentLocation = useCallback(() => {
+    if (partnerCoord) {
+      setReportPinCoord(partnerCoord);
+    } else {
+      Alert.alert(
+        'Location unavailable',
+        'Still waiting for a GPS fix. Please try again in a moment.',
+      );
+    }
+  }, [partnerCoord]);
+
+  const handleSubmitReportedLocation = useCallback(async () => {
+    const addressId = reportAddressId.trim();
+    const addressLine1 = reportAddressLine1.trim();
+
+    if (!addressId) {
+      Alert.alert(
+        'Address ID required',
+        'Enter the address or location ID before saving.',
+      );
+      return;
+    }
+
+    if (!addressLine1) {
+      Alert.alert(
+        'Address required',
+        'Enter at least Address Line 1 before saving.',
+      );
+      return;
+    }
+
+    if (!reportPinCoord) {
+      Alert.alert(
+        'Location required',
+        'Drag the pin on the map to the correct spot, or tap "Use my location".',
+      );
+      return;
+    }
+
+    const customerId = order.orderDetails?.customerId ?? order.customerId;
+    const partnerId = order.deliveryPartnerId || order.orderDetails?.customerId;
+
+    try {
+      setReportSubmitting(true);
+      await deliveryPartnerService.createReportedAddress({
+        addressId,
+        customerId: String(customerId ?? ''),
+        reportedByPartnerId: String(partnerId ?? ''),
+        latitude: reportPinCoord.lat,
+        longitude: reportPinCoord.lng,
+        addressLine1,
+        addressLine2: reportAddressLine2.trim() || null,
+        landmark: reportLandmark.trim() || null,
+        city: reportCity.trim() || null,
+        state: reportState.trim() || null,
+        pincode: reportPincode.trim() || null,
+        reason:
+          reportReason.trim() || 'Customer requested a new delivery location',
+      });
+
+      setReportModalVisible(false);
+      resetReportForm();
+      Alert.alert('Success', 'Reported location saved');
+    } catch (error: any) {
+      console.error('Error submitting reported location:', error);
+      Alert.alert(
+        'Unable to save report',
+        error?.message || 'Please try again shortly.',
+      );
+    } finally {
+      setReportSubmitting(false);
+    }
+  }, [
+    order.customerId,
+    order.deliveryPartnerId,
+    order.orderDetails?.customerId,
+    reportAddressId,
+    reportAddressLine1,
+    reportAddressLine2,
+    reportCity,
+    reportLandmark,
+    reportPinCoord,
+    reportPincode,
+    reportReason,
+    reportState,
+    resetReportForm,
+  ]);
+
   const handleAction = useCallback(async () => {
     if (config.apiAction === null) {
       navigation.goBack();
@@ -979,7 +1177,7 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
       } else if (config.apiAction === 'arriveDestination') {
         await deliveryPartnerService.arriveAtDestination(orderId);
         if (componentMountedRef.current) {
-          setOrder(prev => ({ ...prev, orderStatus: 'REACHED_LOCATION' }));
+          setOrder(prev => ({ ...prev, orderStatus: 'ARRIVED_AT_LOCATION' }));
         }
       } else if (config.apiAction === 'completeDelivery') {
         console.log('Evidence Image URI:', evidenceImage, orderId);
@@ -1934,6 +2132,18 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
     paymentMode === 'ONLINE' &&
     !isPaymentDone;
 
+  // Region for the mini-map inside the "Report Another Location" modal.
+  // Recomputed on every render from reportPinCoord so dragging/tapping the
+  // marker keeps the region (and therefore the visible pin) in sync.
+  const reportMapRegion: Region | null = reportPinCoord
+    ? {
+        latitude: reportPinCoord.lat,
+        longitude: reportPinCoord.lng,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      }
+    : null;
+
   return (
     <SafeAreaView style={s.container} edges={['top', 'left', 'right']}>
       <View style={s.header}>
@@ -1964,6 +2174,17 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
       </ScrollView>
 
       <View style={s.footer}>
+        {orderStatus === 'ORDER_PICKED_UP' && (
+          <TouchableOpacity
+            style={[s.secondaryAction, { marginBottom: 12 }]}
+            onPress={openReportModal}
+            disabled={reportSubmitting}
+            activeOpacity={0.85}
+          >
+            <Text style={s.secondaryActionText}>Report Another Location</Text>
+          </TouchableOpacity>
+        )}
+
         <TouchableOpacity
           style={[
             s.cta,
@@ -1981,6 +2202,214 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
           )}
         </TouchableOpacity>
       </View>
+
+      {/* ── Report Another Location Modal ── */}
+      <Modal
+        visible={reportModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setReportModalVisible(false)}
+      >
+        <View style={s.reportModalOverlay}>
+          <View style={s.reportModalCard}>
+            <View style={s.reportModalHeader}>
+              <Text style={s.reportModalTitle}>Report Another Location</Text>
+              <TouchableOpacity
+                style={s.reportModalClose}
+                onPress={() => setReportModalVisible(false)}
+                activeOpacity={0.85}
+              >
+                <X size={16} color="#475569" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={{ paddingBottom: 8 }}
+            >
+              <Text style={s.reportFieldLabel}>Pin the exact location</Text>
+              <View style={s.reportMapWrap}>
+                {reportMapRegion ? (
+                  <MapView
+                    style={StyleSheet.absoluteFillObject}
+                    region={reportMapRegion}
+                    onPress={e => {
+                      const { latitude, longitude } = e.nativeEvent.coordinate;
+                      setReportPinCoord({ lat: latitude, lng: longitude });
+                    }}
+                  >
+                    {/* Draggable pin — this is the coordinate that gets submitted */}
+                    <Marker
+                      coordinate={{
+                        latitude: reportPinCoord!.lat,
+                        longitude: reportPinCoord!.lng,
+                      }}
+                      draggable
+                      onDragEnd={e => {
+                        const { latitude, longitude } =
+                          e.nativeEvent.coordinate;
+                        setReportPinCoord({ lat: latitude, lng: longitude });
+                      }}
+                      anchor={{ x: 0.5, y: 1 }}
+                    >
+                      <CustomerMarker name="Drag to adjust" />
+                    </Marker>
+
+                    {/* Partner's live GPS fix, shown for reference only */}
+                    {partnerCoord && (
+                      <Marker
+                        coordinate={{
+                          latitude: partnerCoord.lat,
+                          longitude: partnerCoord.lng,
+                        }}
+                        anchor={{ x: 0.5, y: 0.5 }}
+                      >
+                        <DeliveryPartnerMarker />
+                      </Marker>
+                    )}
+                  </MapView>
+                ) : (
+                  <View style={[s.mapFallback, StyleSheet.absoluteFillObject]}>
+                    <MapPin size={24} color="#0E6DFD" />
+                    <Text style={s.mapPlaceholderLabel}>
+                      Waiting for location…
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              <View style={s.reportMapHintRow}>
+                <Text style={s.reportMapHintText}>
+                  Tap anywhere on the map, or drag the pin to the correct spot
+                </Text>
+                <TouchableOpacity
+                  style={s.reportUseGpsBtn}
+                  onPress={useMyCurrentLocation}
+                  activeOpacity={0.85}
+                >
+                  <Navigation size={13} color="#0E6DFD" />
+                  <Text style={s.reportUseGpsBtnText}>Use my location</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* <Text style={s.reportFieldLabel}>Address ID</Text>
+              <View style={s.reportInputWrap}>
+                <TextInput
+                  value={reportAddressId}
+                  onChangeText={setReportAddressId}
+                  placeholder="ADDR_12345"
+                  style={s.reportInputText}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View> */}
+
+              <Text style={s.reportFieldLabel}>Address Line 1 *</Text>
+              <View style={s.reportInputWrap}>
+                <TextInput
+                  value={reportAddressLine1}
+                  onChangeText={setReportAddressLine1}
+                  placeholder="House / Flat no., Building name"
+                  style={s.reportInputText}
+                />
+              </View>
+
+              <Text style={s.reportFieldLabel}>Address Line 2</Text>
+              <View style={s.reportInputWrap}>
+                <TextInput
+                  value={reportAddressLine2}
+                  onChangeText={setReportAddressLine2}
+                  placeholder="Street, Area"
+                  style={s.reportInputText}
+                />
+              </View>
+
+              <Text style={s.reportFieldLabel}>Landmark</Text>
+              <View style={s.reportInputWrap}>
+                <TextInput
+                  value={reportLandmark}
+                  onChangeText={setReportLandmark}
+                  placeholder="Near metro pillar 120, opposite XYZ store"
+                  style={s.reportInputText}
+                />
+              </View>
+
+              <View style={s.reportInputRow}>
+                <View style={s.reportInputHalf}>
+                  <Text style={s.reportFieldLabel}>City</Text>
+                  <View style={s.reportInputWrap}>
+                    <TextInput
+                      value={reportCity}
+                      onChangeText={setReportCity}
+                      placeholder="City"
+                      style={s.reportInputText}
+                    />
+                  </View>
+                </View>
+                <View style={s.reportInputHalf}>
+                  <Text style={s.reportFieldLabel}>State</Text>
+                  <View style={s.reportInputWrap}>
+                    <TextInput
+                      value={reportState}
+                      onChangeText={setReportState}
+                      placeholder="State"
+                      style={s.reportInputText}
+                    />
+                  </View>
+                </View>
+              </View>
+
+              <Text style={s.reportFieldLabel}>Pincode</Text>
+              <View style={s.reportInputWrap}>
+                <TextInput
+                  value={reportPincode}
+                  onChangeText={setReportPincode}
+                  placeholder="452001"
+                  style={s.reportInputText}
+                  keyboardType="number-pad"
+                  maxLength={6}
+                />
+              </View>
+
+              <Text style={s.reportFieldLabel}>Reason</Text>
+              <View style={s.reportInputWrapTextarea}>
+                <TextInput
+                  value={reportReason}
+                  onChangeText={setReportReason}
+                  placeholder="Customer asked to come to another location"
+                  multiline
+                  style={s.reportInputArea}
+                />
+              </View>
+
+              <View style={s.reportMetaRow}>
+                <Text style={s.reportMetaLabel}>Pin coordinates</Text>
+                <Text style={s.reportMetaValue}>
+                  {reportPinCoord
+                    ? `${reportPinCoord.lat.toFixed(
+                        5,
+                      )}, ${reportPinCoord.lng.toFixed(5)}`
+                    : 'Waiting for location'}
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                style={[s.reportSubmitBtn, reportSubmitting && s.ctaDisabled]}
+                onPress={handleSubmitReportedLocation}
+                disabled={reportSubmitting}
+                activeOpacity={0.85}
+              >
+                {reportSubmitting ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={s.reportSubmitText}>Save Reported Location</Text>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       {/* ── QR Code Modal (image-only, no card chrome) ── */}
       <Modal
@@ -2919,6 +3348,21 @@ const s = StyleSheet.create({
     color: '#0E6DFD',
   },
   footer: { position: 'absolute', left: 14, right: 14, bottom: 24 },
+  secondaryAction: {
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  secondaryActionText: {
+    fontSize: 13,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#0F172A',
+  },
   cta: {
     height: 54,
     borderRadius: 14,
@@ -2934,6 +3378,155 @@ const s = StyleSheet.create({
   ctaText: {
     fontSize: 15,
     fontFamily: FONT_FAMILY.bricolageBold,
+    color: '#FFFFFF',
+  },
+  reportModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  reportModalCard: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 24,
+    maxHeight: '88%',
+  },
+  reportModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  reportModalTitle: {
+    fontSize: 18,
+    fontFamily: FONT_FAMILY.bricolageBold,
+    color: '#0F172A',
+  },
+  reportModalClose: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // ── Mini map inside the report modal ──
+  reportMapWrap: {
+    height: REPORT_MAP_HEIGHT,
+    borderRadius: 14,
+    overflow: 'hidden',
+    backgroundColor: '#E8EFFF',
+    marginBottom: 10,
+  },
+  reportMapHintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 16,
+  },
+  reportMapHintText: {
+    flex: 1,
+    fontSize: 11,
+    fontFamily: FONT_FAMILY.outfitRegular,
+    color: '#94A3B8',
+  },
+  reportUseGpsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  reportUseGpsBtnText: {
+    fontSize: 11,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#0E6DFD',
+  },
+  reportInputRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  reportInputHalf: {
+    flex: 1,
+  },
+  reportFieldLabel: {
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#475569',
+    marginBottom: 8,
+  },
+  reportInputWrap: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    marginBottom: 12,
+  },
+  reportInputText: {
+    fontSize: 13,
+    fontFamily: FONT_FAMILY.outfitRegular,
+    color: '#0F172A',
+  },
+  reportInputWrapTextarea: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 12,
+    minHeight: 82,
+  },
+  reportInputArea: {
+    minHeight: 62,
+    fontSize: 13,
+    fontFamily: FONT_FAMILY.outfitRegular,
+    color: '#0F172A',
+    textAlignVertical: 'top',
+  },
+  reportMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#EFF6FF',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 16,
+    gap: 10,
+  },
+  reportMetaLabel: {
+    fontSize: 11,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#1D4ED8',
+  },
+  reportMetaValue: {
+    fontSize: 11,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#1E293B',
+    flexShrink: 1,
+    textAlign: 'right',
+  },
+  reportSubmitBtn: {
+    height: 50,
+    borderRadius: 12,
+    backgroundColor: '#0E6DFD',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reportSubmitText: {
+    fontSize: 14,
+    fontFamily: FONT_FAMILY.outfitBold,
     color: '#FFFFFF',
   },
   webviewBtn: {
