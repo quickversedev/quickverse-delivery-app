@@ -10,6 +10,7 @@ export type DeliveryPartnerProfile = {
   orderFailed: number;
   earnings: number | null;
   isOnline?: boolean;
+  isActive?: boolean;
 };
 
 type OrderFinance = {
@@ -158,10 +159,14 @@ type DeliveryPartnerApiResponse = {
     earnings?: number;
     totalEarnings?: number;
     isOnline?: boolean;
+    isActive?: boolean;
+    active?: boolean;
   };
   id?: string;
   deliveryPartnerId?: string;
   isOnline?: boolean;
+  isActive?: boolean;
+  active?: boolean;
   name?: string;
   fullName?: string;
   partnerName?: string;
@@ -207,6 +212,7 @@ const normalizePartnerProfile = (
         ? payload.totalEarnings
         : null,
     isOnline: Boolean(payload?.isOnline ?? false),
+    isActive: typeof payload?.isActive === 'boolean' ? payload.isActive : typeof payload?.active === 'boolean' ? payload.active : undefined,
   };
 };
 

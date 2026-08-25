@@ -518,7 +518,7 @@ const HomeScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { partnerProfile, isPartnerLoading, logout, authData } = useAuthStore();
+  const { partnerProfile, isPartnerLoading, logout, authData, refreshPartnerProfile } = useAuthStore();
 
   const [isOnline, setIsOnline] = useState(false);
   const [isToggling, setIsToggling] = useState(false);
@@ -564,6 +564,7 @@ const HomeScreen: React.FC = () => {
   } | null>(null);
   const [otpError, setOtpError] = useState('');
   const [otpLoading, setOtpLoading] = useState(false);
+  const [showDeactivatedWarning, setShowDeactivatedWarning] = useState(false);
 
   // ---- New order request (accept / reject) state ---------------------------
   // Orders arrive with top-level orderStatus === 'PARTNER_ASSIGNED' before the
@@ -666,14 +667,21 @@ const HomeScreen: React.FC = () => {
     }
   };
 
-  const handleRefreshOrders = async () => {
+  const handleRefresh = async () => {
     if (!partnerId) return;
     setIsOrdersRefreshing(true);
     try {
-      await fetchAssignedOrders({ silent: true });
-      if (timeRangeFilter === 'custom' && customStart && customEnd) {
-        await fetchCustomOrders(customStart, customEnd);
+      await refreshPartnerProfile();
+      if (activeTab === 'orders') {
+        await fetchAssignedOrders({ silent: true });
+        if (timeRangeFilter === 'custom' && customStart && customEnd) {
+          await fetchCustomOrders(customStart, customEnd);
+        }
+      } else if (activeTab === 'dashboard') {
+        await fetchPartnerStats(statsFilter);
       }
+    } catch (error) {
+      console.error('Refresh failed', error);
     } finally {
       setIsOrdersRefreshing(false);
     }
@@ -780,6 +788,11 @@ const HomeScreen: React.FC = () => {
   }, [partnerId, handleWebSocketEvent]);
 
   const handleToggleOnline = async () => {
+    if (partnerProfile && partnerProfile.isActive === false) {
+      setShowDeactivatedWarning(true);
+      setTimeout(() => setShowDeactivatedWarning(false), 4000);
+      return;
+    }
     if (!partnerId) {
       Alert.alert('Partner ID missing', 'Unable to update online status.');
       return;
@@ -2250,14 +2263,12 @@ const HomeScreen: React.FC = () => {
         ]}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          activeTab === 'orders' ? (
-            <RefreshControl
-              refreshing={isOrdersRefreshing}
-              onRefresh={handleRefreshOrders}
-              colors={['#0E6DFD']}
-              tintColor="#0E6DFD"
-            />
-          ) : undefined
+          <RefreshControl
+            refreshing={isOrdersRefreshing}
+            onRefresh={handleRefresh}
+            colors={['#0E6DFD']}
+            tintColor="#0E6DFD"
+          />
         }
       >
         <View style={styles.customHeader}>
@@ -2304,10 +2315,10 @@ const HomeScreen: React.FC = () => {
             <Text
               style={[
                 styles.statusBadgeText,
-                isOnline ? styles.statusOnlineText : styles.statusOfflineText,
+                partnerProfile?.isActive === false ? { color: '#EF4444' } : (isOnline ? styles.statusOnlineText : styles.statusOfflineText),
               ]}
             >
-              {isOnline ? 'ONLINE' : 'OFFLINE'}
+              {partnerProfile?.isActive === false ? 'DEACTIVATED' : (isOnline ? 'ONLINE' : 'OFFLINE')}
             </Text>
           </View>
           <View style={styles.statusSwitchWrap}>
@@ -2323,6 +2334,14 @@ const HomeScreen: React.FC = () => {
             />
           </View>
         </View>
+
+        {showDeactivatedWarning && (
+          <View style={{ backgroundColor: '#FEF2F2', borderColor: '#FCA5A5', borderWidth: 1, padding: 12, borderRadius: 10, marginTop: -4, marginBottom: 12, marginHorizontal: 2, shadowColor: '#EF4444', shadowOffset: {width: 0, height: 2}, shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 }}>
+            <Text style={{ color: '#EF4444', fontSize: 12, textAlign: 'center', fontFamily: 'Outfit-Medium' }}>
+              You are deactivated by admin, can't go online, ask admin!
+            </Text>
+          </View>
+        )}
 
         <View style={styles.tabBar}>
           <TouchableOpacity
