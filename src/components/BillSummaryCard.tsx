@@ -186,6 +186,15 @@ const BillSummaryCard: React.FC<BillSummaryCardProps> = ({
             </View>
           )}
 
+          {(finance?.codCharges ?? 0) > 0 && (
+            <View style={styles.row}>
+              <Text style={styles.label}>Cash On Delivery Charges</Text>
+              <Text style={styles.value}>
+                {formatAmount(finance!.codCharges!)}
+              </Text>
+            </View>
+          )}
+
           {effectiveTaxes > 0 && (
             <View>
               <Pressable
@@ -201,33 +210,34 @@ const BillSummaryCard: React.FC<BillSummaryCardProps> = ({
 
               {showTaxBreakdown && (
                 <View style={styles.taxBreakdown}>
-                  {effectiveCommission > 0 && (
+                  {(finance?.platformGst ?? 0) > 0 && (
                     <Text style={styles.taxText}>
-                      Commission (
-                      {effectiveCommissionRate != null
-                        ? `${(effectiveCommissionRate * 100).toFixed(0)}%`
-                        : '10%'}
-                      ): {formatAmount(effectiveCommission)}
+                      Platform GST: {formatAmount(finance!.platformGst!)}
                     </Text>
                   )}
-                  {effectiveDeliveryFee > 0 && (
+                  {(finance?.deliveryGst ?? 0) > 0 && (
                     <Text style={styles.taxText}>
-                      Delivery Fee: {formatAmount(effectiveDeliveryFee)}
+                      Delivery GST: {formatAmount(finance!.deliveryGst!)}
                     </Text>
                   )}
-                  {effectivePlatformFee > 0 && (
+                  {(finance?.packagingGst ?? 0) > 0 && (
                     <Text style={styles.taxText}>
-                      Platform Fee: {formatAmount(effectivePlatformFee)}
+                      Packaging GST: {formatAmount(finance!.packagingGst!)}
+                    </Text>
+                  )}
+                  {(finance?.codGst ?? 0) > 0 && (
+                    <Text style={styles.taxText}>
+                      COD GST: {formatAmount(finance!.codGst!)}
                     </Text>
                   )}
                   <View style={styles.taxDivider} />
                   {effectiveTaxableAmount > 0 && (
                     <Text style={styles.taxText}>
-                      Taxable Amount: {formatAmount(effectiveTaxableAmount)}
+                      Taxable Pool Base: {formatAmount(effectiveTaxableAmount)}
                     </Text>
                   )}
                   <Text style={styles.taxTextBold}>
-                    GST (
+                    GST Total (
                     {effectiveGstRate != null
                       ? `${(effectiveGstRate * 100).toFixed(0)}%`
                       : '18%'}

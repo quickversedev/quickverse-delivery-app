@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, Image, Switch } from 'react-native';
 import { FONT_FAMILY } from '../../theme/typography';
 
@@ -9,6 +9,7 @@ type Props = {
   isOnline: boolean;
   onToggleOnline: (value: boolean) => void;
   avatarUri?: string;
+  isActive?: boolean;
 };
 
 const ProfileHeader: React.FC<Props> = ({
@@ -18,7 +19,20 @@ const ProfileHeader: React.FC<Props> = ({
   isOnline,
   onToggleOnline,
   avatarUri,
-}) => (
+  isActive,
+}) => {
+  const [showDeactivatedWarning, setShowDeactivatedWarning] = useState(false);
+
+  const handleToggle = (value: boolean) => {
+    if (isActive === false) {
+      setShowDeactivatedWarning(true);
+      setTimeout(() => setShowDeactivatedWarning(false), 4000);
+      return;
+    }
+    onToggleOnline(value);
+  };
+
+  return (
   <View style={styles.container}>
     <View style={styles.left}>
       <View style={styles.avatarWrapper}>
@@ -40,19 +54,29 @@ const ProfileHeader: React.FC<Props> = ({
         </Text>
       </View>
     </View>
-    <View style={styles.right}>
-      <Text style={[styles.onlineLabel, isOnline && styles.onlineLabelActive]}>
-        {isOnline ? 'ONLINE' : 'OFFLINE'}
-      </Text>
-      <Switch
-        value={isOnline}
-        onValueChange={onToggleOnline}
+    <View style={{ alignItems: 'flex-end' }}>
+      <View style={styles.right}>
+        <Text style={[styles.onlineLabel, isActive === false ? { color: '#EF4444' } : (isOnline && styles.onlineLabelActive)]}>
+          {isActive === false ? 'DEACTIVATED' : (isOnline ? 'ONLINE' : 'OFFLINE')}
+        </Text>
+        <Switch
+          value={isOnline}
+          onValueChange={handleToggle}
         trackColor={{ false: '#E2E8F0', true: '#BBF7D0' }}
         thumbColor={isOnline ? '#16A34A' : '#94A3B8'}
-      />
+        />
+      </View>
+      {showDeactivatedWarning && (
+        <View style={{ backgroundColor: '#FEF2F2', borderColor: '#FCA5A5', borderWidth: 1, padding: 8, borderRadius: 6, marginTop: 10, position: 'absolute', top: 40, right: 0, width: 220, zIndex: 10 }}>
+          <Text style={{ color: '#EF4444', fontSize: 11, textAlign: 'center', fontFamily: 'Outfit-Medium' }}>
+            You are deactivated by admin, can't go online, ask admin!
+          </Text>
+        </View>
+      )}
     </View>
   </View>
-);
+  );
+};
 
 const styles = StyleSheet.create({
   container: {

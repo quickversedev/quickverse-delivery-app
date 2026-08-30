@@ -131,6 +131,7 @@ const LiveOrderPoolScreen: React.FC = () => {
   );
   const [activeShift, setActiveShift] = useState<ShiftResponse | null>(null);
   const [shiftLoading, setShiftLoading] = useState(true);
+  const [showDeactivatedWarning, setShowDeactivatedWarning] = useState(false);
 
   const { orders, loading, claiming, claimOrder, refresh } =
     usePoolOrders(isOnline);
@@ -153,6 +154,11 @@ const LiveOrderPoolScreen: React.FC = () => {
 
   // Toggle online status
   const handleToggleOnline = useCallback(async () => {
+    if (partnerProfile && partnerProfile.isActive === false) {
+      setShowDeactivatedWarning(true);
+      setTimeout(() => setShowDeactivatedWarning(false), 4000);
+      return;
+    }
     const next = !isOnline;
     setIsOnline(next);
     try {
@@ -232,8 +238,8 @@ const LiveOrderPoolScreen: React.FC = () => {
           onPress={handleToggleOnline}
           activeOpacity={0.8}>
           <View style={[styles.statusDot, isOnline ? styles.dotOnline : styles.dotOffline]} />
-          <Text style={[styles.statusText, isOnline ? styles.statusOnline : styles.statusOffline]}>
-            {isOnline ? 'Online' : 'Offline'}
+          <Text style={[styles.statusText, partnerProfile?.isActive === false ? { color: '#EF4444' } : (isOnline ? styles.statusOnline : styles.statusOffline)]}>
+            {partnerProfile?.isActive === false ? 'Deactivated' : (isOnline ? 'Online' : 'Offline')}
           </Text>
         </TouchableOpacity>
 
@@ -241,6 +247,14 @@ const LiveOrderPoolScreen: React.FC = () => {
           <RefreshCw size={18} color="#64748B" strokeWidth={2} />
         </TouchableOpacity>
       </View>
+
+      {showDeactivatedWarning && (
+        <View style={{ backgroundColor: '#FEF2F2', borderColor: '#FCA5A5', borderWidth: 1, padding: 8, borderRadius: 6, marginHorizontal: 16, marginTop: 8 }}>
+          <Text style={{ color: '#EF4444', fontSize: 11, textAlign: 'center', fontFamily: 'Outfit-Medium' }}>
+            You are deactivated by admin, can't go online, ask admin!
+          </Text>
+        </View>
+      )}
 
       {/* Pool Header */}
       <View style={styles.poolHeader}>
