@@ -24,25 +24,26 @@ import {
   User,
   Store,
   ExternalLink,
-  Camera,
-  Upload,
   CreditCard,
   Banknote,
   RefreshCw,
   AlertTriangle,
   X,
+  Check,
 } from 'lucide-react-native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { FONT_FAMILY } from '../theme/typography';
 import deliveryPartnerService from '../services/delivery-partner.service';
-import type { DeliveryPartnerOrder } from '../services/delivery-partner.service';
+import type {
+  DeliveryPartnerOrder,
+  ReportedAddress,
+} from '../services/delivery-partner.service';
 import usePricingStore from '../store/pricingStore';
 import type { ServiceType } from '../types/pricing';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MapView, { Marker, Region } from 'react-native-maps';
 import Geolocation from '@react-native-community/geolocation';
 import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
-import images from '../assets/images';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const MAP_HEIGHT = SCREEN_HEIGHT * 0.38;
@@ -69,8 +70,6 @@ interface StageConfig {
     | 'completeDelivery'
     | null;
 }
-
-// ─── Type Definitions ─────────────────────────────────────────────────────
 
 interface PaymentQRResponse {
   id: string;
@@ -158,8 +157,6 @@ const STEPS = [
   { label: 'Reach Destination', emoji: '🛵' },
   { label: 'Deliver', emoji: '✅' },
 ];
-
-// ─── Custom Marker Components ────────────────────────────────────────────────
 
 const DeliveryPartnerMarker: React.FC = () => {
   const pulseAnim = useRef(new Animated.Value(1)).current;
@@ -259,8 +256,6 @@ const CustomerMarker: React.FC<{ name?: string }> = ({ name }) => (
   </View>
 );
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
 const parseCustomerAddress = (rawAddress: string | null): ParsedAddress => {
   if (!rawAddress)
     return {
@@ -298,8 +293,6 @@ const parseCustomerAddress = (rawAddress: string | null): ParsedAddress => {
     longitude: Number.isFinite(longitude ?? NaN) ? longitude : null,
     addressLine1: map.addressLine1 || null,
     addressLine2: map.addressLine2 || null,
-    // Some payloads use addressLine3 for a landmark-style third line;
-    // fall back to an explicit `landmark` key if the backend ever sends one.
     landmark: map.addressLine3 || map.landmark || null,
     city: map.city || null,
     state: map.state || null,
@@ -365,8 +358,6 @@ const fitRegion = (coords: CoordinateData[]): Region | null => {
   };
 };
 
-// ─── InfoChip ─────────────────────────────────────────────────────────────────
-
 const InfoChip: React.FC<{
   icon: React.ReactNode;
   label: string;
@@ -382,8 +373,6 @@ const InfoChip: React.FC<{
     </View>
   </View>
 );
-
-// ─── MapView with Custom Markers ──────────────────────────────────────────────
 
 interface MapWithMarkersProps {
   showStore?: boolean;
@@ -476,8 +465,6 @@ const MapWithMarkers: React.FC<MapWithMarkersProps> = ({
   );
 };
 
-// ─── Main Screen Component ────────────────────────────────────────────────────
-
 const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
   const { order: initialOrder } = route.params;
   const [order, setOrder] = useState<DeliveryPartnerOrder>(initialOrder);
@@ -488,20 +475,15 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
   const [evidenceImage, setEvidenceImage] = useState<string | null>(null);
   const [qrModalVisible, setQrModalVisible] = useState(false);
 
-  // ── Reported-address modal state ──
+  // ── Report Address Modal States ──
   const [reportModalVisible, setReportModalVisible] = useState(false);
   const [reportReason, setReportReason] = useState('');
-  const [reportAddressId, setReportAddressId] = useState('');
   const [reportAddressLine1, setReportAddressLine1] = useState('');
   const [reportAddressLine2, setReportAddressLine2] = useState('');
   const [reportLandmark, setReportLandmark] = useState('');
   const [reportCity, setReportCity] = useState('');
   const [reportState, setReportState] = useState('');
   const [reportPincode, setReportPincode] = useState('');
-  // The pin the delivery partner can drag / tap on the mini-map. This is
-  // what actually gets submitted as latitude/longitude — it starts at the
-  // partner's live GPS position (falling back to the customer's last known
-  // coordinates) and can be repositioned freely from there.
   const [reportPinCoord, setReportPinCoord] = useState<CoordinateData | null>(
     null,
   );
@@ -518,24 +500,19 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
 
   const [partnerCoord, setPartnerCoord] = useState<CoordinateData | null>(null);
 
-  // ── Payment QR states ──
   const [qrImageUrl, setQrImageUrl] = useState<string | null>(null);
   const [isQrLoading, setIsQrLoading] = useState(false);
   const [isPaymentDone, setIsPaymentDone] = useState(false);
   const [paymentCheckLoading, setPaymentCheckLoading] = useState(false);
   const [qrError, setQrError] = useState<string | null>(null);
-  // NEW: tracks whether the <Image> actually failed to render the QR bytes
-  // (separate from qrError, which tracks API/network failures).
   const [qrImageRenderFailed, setQrImageRenderFailed] = useState(false);
   const [qrImageLoading, setQrImageLoading] = useState(false);
-  // Bump this to force <Image> to remount and retry a fresh fetch.
   const [qrImageRetryKey, setQrImageRetryKey] = useState(0);
   const pollingIntervalRef = useRef<any>(null);
   const componentMountedRef = useRef(true);
 
   const { getPricingValues } = usePricingStore();
 
-  // ── Geolocation Effect ──
   useEffect(() => {
     Geolocation.requestAuthorization();
 
@@ -565,7 +542,6 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
     };
   }, []);
 
-  // ── Cleanup Effect ──
   useEffect(() => {
     return () => {
       componentMountedRef.current = false;
@@ -646,6 +622,12 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
     ? String(order.orderDetails.customerMobile).slice(-10)
     : null;
 
+  const getCustomerAddressId = (): string | null => {
+    return order?.customerAddressId ?? null;
+  };
+
+  const reportedAddresses: ReportedAddress[] = order?.reportedAddresses ?? [];
+
   const openOrderWebView = () => {
     const url = order.orderDetails?.orderLink;
     if (!url) return;
@@ -677,11 +659,6 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
     );
   };
 
-  // Pull the QR image url out of whatever shape the API returns.
-  // Some backends wrap the entity in { data: {...} } or { qrCode: {...} },
-  // and Razorpay's own field naming has varied across integrations
-  // (image_url vs imageUrl vs short_url). We check all known shapes so a
-  // wrapper change on the backend doesn't silently break the UI again.
   const extractQrImageUrl = (raw: any): string | null => {
     if (!raw) return null;
     const candidate =
@@ -722,7 +699,7 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
       if (resolvedImageUrl) {
         setQrImageUrl(resolvedImageUrl);
         setQrImageLoading(true);
-        setQrModalVisible(true); // Auto-open modal after generation
+        setQrModalVisible(true);
 
         Image.getSize(
           resolvedImageUrl,
@@ -731,9 +708,7 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
               setQrImageAspectRatio(w / h);
             }
           },
-          () => {
-            // getSize failing isn't fatal — <Image onError> below still catches render failures
-          },
+          () => {},
         );
 
         startPaymentPolling(orderId);
@@ -758,12 +733,6 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
   }, [order]);
 
   // ── Check Payment Status (PROPERLY TYPED) ──
-  // NOTE: For ONLINE payments, the backend automatically marks the order as
-  // DELIVERED as soon as payment is received — the delivery partner doesn't
-  // have to tap "Mark as Delivered" separately. So the moment polling detects
-  // isPaymentDone === true, we flip local order state to DELIVERED and close
-  // the QR modal so the UI reflects the real backend state immediately,
-  // instead of sitting on step 3 waiting for a manual tap.
   const checkPaymentStatus = useCallback(
     async (orderId: string) => {
       if (!componentMountedRef.current) return;
@@ -779,19 +748,12 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
 
         if (statusData?.isPaymentDone === true) {
           setIsPaymentDone(true);
-          // Stop polling once payment is done
           if (pollingIntervalRef.current) {
             clearInterval(pollingIntervalRef.current);
             pollingIntervalRef.current = null;
           }
 
-          // Backend auto-marks the order as DELIVERED on successful online
-          // payment — mirror that here so the stepper/footer/CTA all move
-          // to the DELIVERED stage without requiring another tap.
           setOrder(prev => ({ ...prev, orderStatus: 'DELIVERED' }));
-
-          // Close the QR modal if it's still open so the DELIVERED screen
-          // is visible right away.
           setQrModalVisible(false);
 
           Alert.alert(
@@ -801,7 +763,6 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
         }
       } catch (error: any) {
         console.error('Error checking payment status:', error);
-        // Don't alert on polling errors - just log them
       } finally {
         if (componentMountedRef.current) {
           setPaymentCheckLoading(false);
@@ -814,12 +775,10 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
   // ── Start polling for payment status ──
   const startPaymentPolling = useCallback(
     (orderId: string) => {
-      // Clear any existing interval
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current);
       }
 
-      // Poll every 3 seconds
       pollingIntervalRef.current = setInterval(() => {
         checkPaymentStatus(orderId);
       }, 3000);
@@ -827,8 +786,6 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
     [checkPaymentStatus],
   );
 
-  // Retry rendering the QR image (e.g. after a transient network hiccup)
-  // without hitting the API again.
   const retryQrImage = useCallback(() => {
     setQrImageRenderFailed(false);
     setQrImageLoading(true);
@@ -859,7 +816,6 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
 
     if (mode === 'CASH') {
       setEvidenceImage(null);
-      // Stop polling if switching to cash
       if (pollingIntervalRef.current) {
         clearInterval(pollingIntervalRef.current);
         pollingIntervalRef.current = null;
@@ -987,17 +943,7 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
     return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
   };
 
-  useEffect(() => {
-    if (!reportAddressId && order.orderId) {
-      setReportAddressId(`ADDR_${order.orderId}`);
-    }
-  }, [order.orderId, reportAddressId]);
-
-  // ── Reset + prefill the reported-address form each time it's opened ──
-  // Starts the pin at the delivery partner's live GPS location (falling back
-  // to the customer's last known coordinates), and prefills whatever address
-  // fields we can parse from the existing order so the partner only has to
-  // correct what's actually wrong.
+  // ── Reset the reported-address form (EMPTY) ──
   const resetReportForm = useCallback(() => {
     setReportAddressLine1('');
     setReportAddressLine2('');
@@ -1007,43 +953,24 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
     setReportPincode('');
     setReportReason('');
     setReportPinCoord(null);
-    if (order.orderId) {
-      setReportAddressId(`ADDR_${order.orderId}`);
-    }
-  }, [order.orderId]);
+  }, []);
 
   const openReportModal = useCallback(() => {
+    const addressId = getCustomerAddressId();
+    if (!addressId) {
+      Alert.alert(
+        'Address Not Found',
+        'Unable to report location: Customer address ID is missing from this order.',
+      );
+      return;
+    }
+
     const startCoord = partnerCoord ?? customerCoord ?? null;
     setReportPinCoord(startCoord);
-    setReportAddressLine1(customerAddress.addressLine1 ?? '');
-    setReportAddressLine2(customerAddress.addressLine2 ?? '');
-    setReportLandmark(customerAddress.landmark ?? '');
-    setReportCity(
-      customerAddress.city ?? order.shopDetails?.address?.city ?? '',
-    );
-    setReportState(
-      customerAddress.state ?? order.shopDetails?.address?.state ?? '',
-    );
-    setReportPincode(
-      customerAddress.pincode ?? order.shopDetails?.address?.postalCode ?? '',
-    );
-    setReportReason('');
+    resetReportForm();
     setReportModalVisible(true);
-  }, [
-    partnerCoord,
-    customerCoord,
-    customerAddress.addressLine1,
-    customerAddress.addressLine2,
-    customerAddress.landmark,
-    customerAddress.city,
-    customerAddress.state,
-    customerAddress.pincode,
-    order.shopDetails?.address?.city,
-    order.shopDetails?.address?.state,
-    order.shopDetails?.address?.postalCode,
-  ]);
+  }, [partnerCoord, customerCoord, resetReportForm]);
 
-  // Snap the pin back to the partner's current GPS fix.
   const useMyCurrentLocation = useCallback(() => {
     if (partnerCoord) {
       setReportPinCoord(partnerCoord);
@@ -1055,31 +982,83 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
     }
   }, [partnerCoord]);
 
-  const handleSubmitReportedLocation = useCallback(async () => {
-    const addressId = reportAddressId.trim();
+  // ── Validation helpers ──
+  const validateReportForm = (): boolean => {
     const addressLine1 = reportAddressLine1.trim();
-
-    if (!addressId) {
-      Alert.alert(
-        'Address ID required',
-        'Enter the address or location ID before saving.',
-      );
-      return;
-    }
 
     if (!addressLine1) {
       Alert.alert(
-        'Address required',
+        'Address Required',
         'Enter at least Address Line 1 before saving.',
       );
-      return;
+      return false;
+    }
+
+    if (addressLine1.length < 3) {
+      Alert.alert(
+        'Invalid Address',
+        'Address Line 1 must be at least 3 characters long.',
+      );
+      return false;
     }
 
     if (!reportPinCoord) {
       Alert.alert(
-        'Location required',
+        'Location Required',
         'Drag the pin on the map to the correct spot, or tap "Use my location".',
       );
+      return false;
+    }
+
+    const city = reportCity.trim();
+    if (!city) {
+      Alert.alert('City Required', 'Please enter the city name.');
+      return false;
+    }
+
+    if (city.length < 2) {
+      Alert.alert('Invalid City', 'City name must be at least 2 characters.');
+      return false;
+    }
+
+    const state = reportState.trim();
+    if (!state) {
+      Alert.alert('State Required', 'Please enter the state name.');
+      return false;
+    }
+
+    if (state.length < 2) {
+      Alert.alert('Invalid State', 'State name must be at least 2 characters.');
+      return false;
+    }
+
+    const pincode = reportPincode.trim();
+    if (!pincode) {
+      Alert.alert('Pincode Required', 'Please enter the pincode.');
+      return false;
+    }
+
+    if (!/^\d{6}$/.test(pincode)) {
+      Alert.alert('Invalid Pincode', 'Pincode must be exactly 6 digits.');
+      return false;
+    }
+
+    return true;
+  };
+
+  // ── Submit Reported Location ──
+  const handleSubmitReportedLocation = useCallback(async () => {
+    const addressId = getCustomerAddressId();
+
+    if (!addressId) {
+      Alert.alert(
+        'Address ID Required',
+        'Customer address ID is missing. Please contact support.',
+      );
+      return;
+    }
+
+    if (!validateReportForm()) {
       return;
     }
 
@@ -1088,29 +1067,42 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
 
     try {
       setReportSubmitting(true);
+
+      console.log('Submitting reported address with:', {
+        addressId,
+        customerId,
+        partnerId,
+        latitude: reportPinCoord!.lat,
+        longitude: reportPinCoord!.lng,
+        addressLine1: reportAddressLine1.trim(),
+      });
+
       await deliveryPartnerService.createReportedAddress({
         addressId,
         customerId: String(customerId ?? ''),
         reportedByPartnerId: String(partnerId ?? ''),
-        latitude: reportPinCoord.lat,
-        longitude: reportPinCoord.lng,
-        addressLine1,
+        latitude: reportPinCoord!.lat,
+        longitude: reportPinCoord!.lng,
+        addressLine1: reportAddressLine1.trim(),
         addressLine2: reportAddressLine2.trim() || null,
         landmark: reportLandmark.trim() || null,
-        city: reportCity.trim() || null,
-        state: reportState.trim() || null,
-        pincode: reportPincode.trim() || null,
+        city: reportCity.trim(),
+        state: reportState.trim(),
+        pincode: reportPincode.trim(),
         reason:
           reportReason.trim() || 'Customer requested a new delivery location',
       });
 
       setReportModalVisible(false);
       resetReportForm();
-      Alert.alert('Success', 'Reported location saved');
+      Alert.alert(
+        'Success',
+        'Reported location saved successfully for this address.',
+      );
     } catch (error: any) {
       console.error('Error submitting reported location:', error);
       Alert.alert(
-        'Unable to save report',
+        'Unable to Save Report',
         error?.message || 'Please try again shortly.',
       );
     } finally {
@@ -1120,7 +1112,6 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
     order.customerId,
     order.deliveryPartnerId,
     order.orderDetails?.customerId,
-    reportAddressId,
     reportAddressLine1,
     reportAddressLine2,
     reportCity,
@@ -1150,7 +1141,6 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
           return;
         }
 
-        // For ONLINE, check if payment is done
         if (paymentMode === 'ONLINE' && !isPaymentDone) {
           Alert.alert(
             'Payment Pending',
@@ -1209,7 +1199,7 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
     isPrepaid,
   ]);
 
-  // ── Step renderers (abbreviated - using existing styles) ────────────────────
+  // ── Step renderers ────────────────────
 
   const renderStep0 = () => (
     <>
@@ -1623,6 +1613,47 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* ── REPORTED ADDRESSES SECTION ── */}
+      {reportedAddresses.length > 0 && (
+        <View style={s.infoCard}>
+          <Text style={s.sectionLabel}>CUSTOMER REPORTED LOCATIONS</Text>
+          <Text style={s.reportedAddressesHint}>
+            Customer has reported {reportedAddresses.length} previous
+            location(s)
+          </Text>
+          {reportedAddresses.map((addr, idx) => (
+            <View key={addr.id} style={s.reportedAddressCard}>
+              <View style={s.reportedAddressHeader}>
+                <View style={s.reportedAddressIndex}>
+                  <Text style={s.reportedAddressIndexText}>{idx + 1}</Text>
+                </View>
+                <View style={s.reportedAddressInfo}>
+                  <Text style={s.reportedAddressLine1} numberOfLines={1}>
+                    {addr.addressLine1}
+                  </Text>
+                  <Text style={s.reportedAddressCity} numberOfLines={1}>
+                    {addr.city}, {addr.state} {addr.pincode}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={s.reportedAddressUseBtn}
+                  onPress={() => {
+                    openMaps(
+                      addr.latitude,
+                      addr.longitude,
+                      addr.addressLine1 as any,
+                    );
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Navigation size={14} color="#0E6DFD" />
+                </TouchableOpacity>
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
     </>
   );
 
@@ -2133,8 +2164,6 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
     !isPaymentDone;
 
   // Region for the mini-map inside the "Report Another Location" modal.
-  // Recomputed on every render from reportPinCoord so dragging/tapping the
-  // marker keeps the region (and therefore the visible pin) in sync.
   const reportMapRegion: Region | null = reportPinCoord
     ? {
         latitude: reportPinCoord.lat,
@@ -2293,18 +2322,6 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
                 </TouchableOpacity>
               </View>
 
-              {/* <Text style={s.reportFieldLabel}>Address ID</Text>
-              <View style={s.reportInputWrap}>
-                <TextInput
-                  value={reportAddressId}
-                  onChangeText={setReportAddressId}
-                  placeholder="ADDR_12345"
-                  style={s.reportInputText}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                />
-              </View> */}
-
               <Text style={s.reportFieldLabel}>Address Line 1 *</Text>
               <View style={s.reportInputWrap}>
                 <TextInput
@@ -2312,6 +2329,7 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
                   onChangeText={setReportAddressLine1}
                   placeholder="House / Flat no., Building name"
                   style={s.reportInputText}
+                  placeholderTextColor="#CBD5E1"
                 />
               </View>
 
@@ -2322,6 +2340,7 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
                   onChangeText={setReportAddressLine2}
                   placeholder="Street, Area"
                   style={s.reportInputText}
+                  placeholderTextColor="#CBD5E1"
                 />
               </View>
 
@@ -2332,41 +2351,45 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
                   onChangeText={setReportLandmark}
                   placeholder="Near metro pillar 120, opposite XYZ store"
                   style={s.reportInputText}
+                  placeholderTextColor="#CBD5E1"
                 />
               </View>
 
               <View style={s.reportInputRow}>
                 <View style={s.reportInputHalf}>
-                  <Text style={s.reportFieldLabel}>City</Text>
+                  <Text style={s.reportFieldLabel}>City *</Text>
                   <View style={s.reportInputWrap}>
                     <TextInput
                       value={reportCity}
                       onChangeText={setReportCity}
                       placeholder="City"
                       style={s.reportInputText}
+                      placeholderTextColor="#CBD5E1"
                     />
                   </View>
                 </View>
                 <View style={s.reportInputHalf}>
-                  <Text style={s.reportFieldLabel}>State</Text>
+                  <Text style={s.reportFieldLabel}>State *</Text>
                   <View style={s.reportInputWrap}>
                     <TextInput
                       value={reportState}
                       onChangeText={setReportState}
                       placeholder="State"
                       style={s.reportInputText}
+                      placeholderTextColor="#CBD5E1"
                     />
                   </View>
                 </View>
               </View>
 
-              <Text style={s.reportFieldLabel}>Pincode</Text>
+              <Text style={s.reportFieldLabel}>Pincode *</Text>
               <View style={s.reportInputWrap}>
                 <TextInput
                   value={reportPincode}
                   onChangeText={setReportPincode}
                   placeholder="452001"
                   style={s.reportInputText}
+                  placeholderTextColor="#CBD5E1"
                   keyboardType="number-pad"
                   maxLength={6}
                 />
@@ -2380,6 +2403,7 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
                   placeholder="Customer asked to come to another location"
                   multiline
                   style={s.reportInputArea}
+                  placeholderTextColor="#CBD5E1"
                 />
               </View>
 
@@ -2603,7 +2627,7 @@ const mk = StyleSheet.create({
   },
 });
 
-// ─── Screen Styles (Selected Key Styles) ──────────────────────────────────────
+// ─── Screen Styles ──────────────────────────────────────────────────────────
 
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F2F5FA' },
@@ -2988,48 +3012,6 @@ const s = StyleSheet.create({
   },
   paymentModeBtnTextActive: { color: '#0E6DFD' },
   evidenceSection: { marginTop: 14 },
-  // Label row with "Required" badge inline
-  evidenceLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 8,
-  },
-  evidenceSectionLabel: {
-    fontSize: 11,
-    fontFamily: FONT_FAMILY.outfitBold,
-    color: '#64748B',
-  },
-  evidenceRequiredBadge: {
-    backgroundColor: '#FEF2F2',
-    borderRadius: 6,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderWidth: 1,
-    borderColor: '#FECACA',
-  },
-  evidenceRequiredBadgeText: {
-    fontSize: 9,
-    fontFamily: FONT_FAMILY.outfitBold,
-    color: '#EF4444',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-
-  evidenceUploadRow: { flexDirection: 'row', gap: 10 },
-  evidenceBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 7,
-    paddingVertical: 12,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    borderColor: '#BFDBFE',
-    backgroundColor: '#EFF6FF',
-    borderStyle: 'dashed',
-  },
   errorBox: {
     backgroundColor: '#FEF2F2',
     borderWidth: 1,
@@ -3237,64 +3219,6 @@ const s = StyleSheet.create({
     right: 10,
     padding: 4,
   },
-  qrModalCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    width: '100%',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingBottom: 24,
-    paddingTop: 16,
-  },
-  qrModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    width: '100%',
-    marginBottom: 4,
-  },
-  qrModalTitle: {
-    fontSize: 16,
-    fontFamily: FONT_FAMILY.bricolageBold,
-    color: '#0F172A',
-  },
-  qrModalClose: {
-    fontSize: 16,
-    color: '#64748B',
-    padding: 4,
-  },
-  qrModalSub: {
-    fontSize: 12,
-    fontFamily: FONT_FAMILY.outfitRegular,
-    color: '#64748B',
-    marginBottom: 16,
-  },
-  qrImageWrap: {
-    width: 300,
-    height: 300,
-    borderRadius: 16,
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 10,
-  },
-  qrImage: {
-    width: '100%',
-    height: '100%',
-  },
-  qrImagePlaceholder: {
-    fontSize: 14,
-    fontFamily: FONT_FAMILY.outfitBold,
-    color: '#94A3B8',
-  },
-  qrFallback: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    gap: 6,
-  },
   qrFallbackTitle: {
     fontSize: 13,
     fontFamily: FONT_FAMILY.outfitBold,
@@ -3333,17 +3257,6 @@ const s = StyleSheet.create({
   },
   qrRetryBtnText: {
     fontSize: 11,
-    fontFamily: FONT_FAMILY.outfitBold,
-    color: '#0E6DFD',
-  },
-  qrOpenLinkRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 14,
-  },
-  qrOpenLinkText: {
-    fontSize: 12,
     fontFamily: FONT_FAMILY.outfitBold,
     color: '#0E6DFD',
   },
@@ -3606,99 +3519,11 @@ const s = StyleSheet.create({
     fontFamily: FONT_FAMILY.bricolageBold,
     color: '#0F172A',
   },
-  qrModalHint: {
-    marginTop: 16,
-    fontSize: 11,
-    fontFamily: FONT_FAMILY.outfitRegular,
-    color: '#94A3B8',
-    textAlign: 'center',
-  },
   sectionTitleInline: {
     fontSize: 14,
     fontFamily: FONT_FAMILY.outfitExtraBold,
     color: '#1E293B',
   },
-  timelineEventRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginTop: 12,
-    marginBottom: 12,
-    paddingLeft: 8,
-  },
-  timelineEventDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#0E6DFD',
-    marginTop: 2,
-    marginRight: 12,
-    flexShrink: 0,
-  },
-  timelineEventContent: {
-    flex: 1,
-  },
-  timelineEventLabel: {
-    fontSize: 13,
-    fontFamily: FONT_FAMILY.outfitBold,
-    color: '#0F172A',
-  },
-  timelineEventTime: {
-    fontSize: 12,
-    fontFamily: FONT_FAMILY.outfitRegular,
-    color: '#0E6DFD',
-    marginTop: 2,
-  },
-  timelineEventTimeNA: {
-    fontSize: 12,
-    fontFamily: FONT_FAMILY.outfitRegular,
-    color: '#94A3B8',
-    marginTop: 2,
-  },
-  // ── Enhanced Timeline Styles ──
-  intervalBadge: {
-    marginTop: 6,
-    alignSelf: 'flex-start',
-    backgroundColor: '#0E6DFD',
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    minWidth: 45,
-  },
-  intervalBadgeText: {
-    fontSize: 10,
-    fontFamily: FONT_FAMILY.outfitBold,
-    color: '#FFFFFF',
-    textAlign: 'center',
-  },
-  totalTimeContainer: {
-    marginTop: 12,
-    alignItems: 'center',
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#E2E8F0',
-  },
-  totalTimeCircle: {
-    backgroundColor: '#F0F9FF',
-    borderRadius: 50,
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    minWidth: 140,
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#0E6DFD',
-  },
-  totalTimeLabel: {
-    fontSize: 11,
-    fontFamily: FONT_FAMILY.outfitRegular,
-    color: '#64748B',
-    marginBottom: 4,
-  },
-  totalTimeValue: {
-    fontSize: 16,
-    fontFamily: FONT_FAMILY.outfitExtraBold,
-    color: '#0E6DFD',
-  },
-  // ── Compact Timeline Styles (NEW) ──
   compactTimelineContainer: {
     marginTop: 12,
     paddingVertical: 10,
@@ -3709,7 +3534,6 @@ const s = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 0,
   },
-
   compactDot: {
     width: 8,
     height: 8,
@@ -3717,23 +3541,19 @@ const s = StyleSheet.create({
     marginRight: 12,
     flexShrink: 0,
   },
-
   compactStageInfo: {
     flex: 1,
   },
-
   compactStageLabel: {
     fontSize: 13,
     fontFamily: FONT_FAMILY.outfitBold,
     color: '#1E293B',
   },
-
   compactStageTime: {
     fontSize: 12,
     fontFamily: FONT_FAMILY.outfitRegular,
     marginTop: 2,
   },
-
   compactIntervalBadge: {
     minWidth: 42,
     height: 28,
@@ -3746,17 +3566,10 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     marginLeft: 12,
   },
-
   compactIntervalBadgeText: {
     fontSize: 10,
     fontFamily: FONT_FAMILY.outfitBold,
     color: '#64748B',
-  },
-  compactIntervalText: {
-    fontSize: 16,
-    fontFamily: FONT_FAMILY.outfitBold,
-    color: '#94A3B8',
-    fontStyle: 'italic',
   },
   compactTotalTimeRow: {
     marginTop: 14,
@@ -3780,5 +3593,63 @@ const s = StyleSheet.create({
     fontSize: 14,
     fontFamily: FONT_FAMILY.bricolageBold,
     color: '#0E6DFD',
+  },
+  // ── REPORTED ADDRESSES STYLES ──
+  reportedAddressesHint: {
+    fontSize: 11,
+    fontFamily: FONT_FAMILY.outfitRegular,
+    color: '#64748B',
+    marginBottom: 12,
+  },
+  reportedAddressCard: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 10,
+  },
+  reportedAddressHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  reportedAddressIndex: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#EEF4FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  reportedAddressIndexText: {
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#0E6DFD',
+  },
+  reportedAddressInfo: {
+    flex: 1,
+  },
+  reportedAddressLine1: {
+    fontSize: 13,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#0F172A',
+  },
+  reportedAddressCity: {
+    fontSize: 11,
+    fontFamily: FONT_FAMILY.outfitRegular,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  reportedAddressUseBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#EFF6FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
   },
 });

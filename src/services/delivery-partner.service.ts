@@ -67,6 +67,8 @@ export type DeliveryPartnerOrder = {
   orderDetails: DeliveryPartnerOrderDetails | null;
   finance: OrderFinance | null;
   shopDetails: DeliveryPartnerShopDetails | null;
+  customerAddressId: string | null;
+  reportedAddresses: ReportedAddress[] | null;
 };
 
 export type DeliveryPartnerOrderItem = {
@@ -376,6 +378,8 @@ const normalizePartnerOrder = (order: any): DeliveryPartnerOrder => ({
   updatedBy: order?.updatedBy ? String(order.updatedBy) : null,
   updatedAt: order?.updatedAt ? String(order.updatedAt) : null,
   finance: order?.orderDetails?.finance || null,
+  customerAddressId: order?.orderDetails?.customerAddressId || null,
+  reportedAddresses: (order?.orderDetails?.reportedAddresses) || [],
   orderDetails: order?.orderDetails
     ? {
         orderId: String(order.orderDetails?.orderId ?? order?.orderId ?? ''),
@@ -611,6 +615,8 @@ const getAssignedOrdersByPartnerId = async (
       validateStatus: status => status >= 200 && status < 400,
     }),
   );
+
+  console.log("Raw Orders : ", data?.content);
 
   if (Array.isArray(data?.content))
     return data.content.map(normalizePartnerOrder);
