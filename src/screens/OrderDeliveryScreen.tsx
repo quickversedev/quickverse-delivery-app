@@ -1,50 +1,51 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  Linking,
-  StyleSheet,
-  TextInput,
-  Alert,
-  ActivityIndicator,
-  Image,
-  Platform,
-  Dimensions,
-  Animated,
-  Modal,
-} from 'react-native';
-import {
-  ArrowLeft,
-  Phone,
-  Navigation,
-  CheckCircle2,
-  MapPin,
-  User,
-  Store,
-  ExternalLink,
-  CreditCard,
-  Banknote,
-  RefreshCw,
-  AlertTriangle,
-  X,
-  Check,
-} from 'lucide-react-native';
+import Geolocation from '@react-native-community/geolocation';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { FONT_FAMILY } from '../theme/typography';
-import deliveryPartnerService from '../services/delivery-partner.service';
+import {
+  AlertTriangle,
+  ArrowLeft,
+  Banknote,
+  CheckCircle2,
+  CreditCard,
+  ExternalLink,
+  MapPin,
+  Navigation,
+  Phone,
+  RefreshCw,
+  Store,
+  User,
+  X
+} from 'lucide-react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Alert,
+  Animated,
+  Dimensions,
+  Image,
+  Linking,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TableOpacity,
+  View,
+} from 'react-native';
+import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
+import MapView, { Marker, Region } from 'react-native-maps';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import type {
   DeliveryPartnerOrder,
   ReportedAddress,
 } from '../services/delivery-partner.service';
+import deliveryPartnerService from '../services/delivery-partner.service';
 import usePricingStore from '../store/pricingStore';
+import { FONT_FAMILY } from '../theme/typography';
 import type { ServiceType } from '../types/pricing';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import MapView, { Marker, Region } from 'react-native-maps';
-import Geolocation from '@react-native-community/geolocation';
-import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
-
+import {
+  getBestEffortCurrentLocation,
+  reverseGeocode,
+} from '../utils/location';
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const MAP_HEIGHT = SCREEN_HEIGHT * 0.38;
 const REPORT_MAP_HEIGHT = 210;
@@ -955,6 +956,20 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
     setReportPinCoord(null);
   }, []);
 
+  const handleReportPinChange = async (lat: number, lng: number) => {
+    setReportPinCoord({ lat, lng });
+    const address = await reverseGeocode(lat, lng);
+    if (address) {
+      setReportAddressLine1(address.addressLine1);
+      setReportCity(address.city);
+      setReportState(address.state);
+      setReportPincode(address.pincode);
+      if (address.landmark) {
+        setReportLandmark(address.landmark);
+      }
+    }
+  };
+
   const openReportModal = useCallback(() => {
     const addressId = getCustomerAddressId();
     if (!addressId) {
@@ -966,20 +981,31 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
     }
 
     const startCoord = partnerCoord ?? customerCoord ?? null;
-    setReportPinCoord(startCoord);
     resetReportForm();
+    if (startCoord) {
+      handleReportPinChange(startCoord.lat, startCoord.lng);
+    } else {
+      setReportPinCoord(null);
+    }
     setReportModalVisible(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [partnerCoord, customerCoord, resetReportForm]);
 
-  const useMyCurrentLocation = useCallback(() => {
-    if (partnerCoord) {
-      setReportPinCoord(partnerCoord);
-    } else {
+  const useMyCurrentLocation = useCallback(async () => {
+    try {
+      if (partnerCoord) {
+        handleReportPinChange(partnerCoord.lat, partnerCoord.lng);
+      } else {
+        const coord = await getBestEffortCurrentLocation();
+        handleReportPinChange(coord.latitude, coord.longitude);
+      }
+    } catch (error) {
       Alert.alert(
         'Location unavailable',
-        'Still waiting for a GPS fix. Please try again in a moment.',
+        'Could not fetch your current location. Please try again in a moment.',
       );
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [partnerCoord]);
 
   // ── Validation helpers ──
@@ -2265,7 +2291,7 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
                     region={reportMapRegion}
                     onPress={e => {
                       const { latitude, longitude } = e.nativeEvent.coordinate;
-                      setReportPinCoord({ lat: latitude, lng: longitude });
+                      handleReportPinChange(latitude, longitude);
                     }}
                   >
                     {/* Draggable pin — this is the coordinate that gets submitted */}
@@ -2278,7 +2304,7 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
                       onDragEnd={e => {
                         const { latitude, longitude } =
                           e.nativeEvent.coordinate;
-                        setReportPinCoord({ lat: latitude, lng: longitude });
+                        handleReportPinChange(latitude, longitude);
                       }}
                       anchor={{ x: 0.5, y: 1 }}
                     >

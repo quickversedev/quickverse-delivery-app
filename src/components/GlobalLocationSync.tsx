@@ -121,7 +121,7 @@ const GlobalLocationSync: React.FC = () => {
       try {
         isRunningRef.current = true;
         await BackgroundService.start(locationTask, {
-          ...bgOptions,
+          ...(bgOptions as any),
           parameters: { partnerId },
         });
         console.log('[LocationSync] Background service started for:', partnerId);

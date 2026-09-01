@@ -112,3 +112,50 @@ export const getBestEffortCurrentLocation = async (): Promise<Coordinate> => {
     throw error;
   }
 };
+
+export const reverseGeocode = async (lat: number, lng: number) => {
+  try {
+    const GOOGLE_MAPS_API_KEY = 'AIzaSyBBPlj-9FMg7QqmCNZSR_dWijrMROb3Uxk';
+    const response = await fetch(
+      `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${GOOGLE_MAPS_API_KEY}`
+    );
+    const data = await response.json();
+
+    if (data.status === 'OK' && data.results && data.results.length > 0) {
+      const components = data.results[0].address_components;
+      
+      const streetNumber = components.find((c: any) => c.types.includes('street_number'))?.long_name || '';
+      const route = components.find((c: any) => c.types.includes('route'))?.long_name || '';
+      const sublocality1 = components.find((c: any) => c.types.includes('sublocality_level_1'))?.long_name || '';
+      const sublocality2 = components.find((c: any) => c.types.includes('sublocality_level_2'))?.long_name || '';
+      const sublocality3 = components.find((c: any) => c.types.includes('sublocality_level_3'))?.long_name || '';
+      
+      // Combine available parts for a detailed Address Line 1
+      const lineParts = [streetNumber, route, sublocality3, sublocality2, sublocality1].filter(Boolean);
+      let addressLine1 = lineParts.join(', ');
+      
+      if (!addressLine1) {
+        addressLine1 = data.results[0].formatted_address;
+      }
+
+      const city = components.find((c: any) => c.types.includes('locality'))?.long_name || 
+                   components.find((c: any) => c.types.includes('administrative_area_level_2'))?.long_name || '';
+      const state = components.find((c: any) => c.types.includes('administrative_area_level_1'))?.long_name || '';
+      const pincode = components.find((c: any) => c.types.includes('postal_code'))?.long_name || '';
+      
+      const landmark = components.find((c: any) => c.types.includes('point_of_interest'))?.long_name || 
+                       components.find((c: any) => c.types.includes('premise'))?.long_name || '';
+
+      return {
+        addressLine1,
+        city,
+        state,
+        pincode,
+        landmark,
+      };
+    }
+  } catch (error) {
+    console.warn('Reverse geocode error:', error);
+  }
+  return null;
+};
