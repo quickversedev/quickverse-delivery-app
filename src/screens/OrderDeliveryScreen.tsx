@@ -13,7 +13,7 @@ import {
   RefreshCw,
   Store,
   User,
-  X
+  X,
 } from 'lucide-react-native';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -28,7 +28,8 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TableOpacity,
+  TextInput,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
@@ -72,23 +73,7 @@ interface StageConfig {
     | null;
 }
 
-interface PaymentQRResponse {
-  id: string;
-  image_url: string;
-  status: 'active' | 'closed';
-  close_by?: number;
-  created_at?: string | null;
-}
 
-interface PaymentStatusResponse {
-  isPaymentDone: boolean;
-  paymentStatus?: string;
-  paymentDetails?: {
-    amount?: number;
-    method?: string;
-    timestamp?: string;
-  };
-}
 
 interface CoordinateData {
   lat: number;
@@ -598,7 +583,6 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
     : 'FOOD';
   const pricing = getPricingValues(serviceType);
   const subtotal = order.orderDetails?.amountExcludingDeliveryFee ?? 0;
-  const commission = pricing.commissionRate * subtotal;
   const taxableAmount = pricing.deliveryFee + pricing.platformFee;
   const taxes = Math.round(pricing.gstRate * taxableAmount);
   const computedTotal =
@@ -610,8 +594,6 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
 
   const isPrepaid = order?.finance?.paymentMethod === 'PREPAID' || false;
 
-  const paymentMethod =
-    order.orderDetails?.paymentMethod ?? order.paymentMethod ?? 'N/A';
 
   const finalPaymentMethod = isPrepaid
     ? 'PREPAID'
@@ -638,27 +620,7 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
     });
   };
 
-  const pickImage = async () => {
-    launchImageLibrary(
-      { mediaType: 'photo', quality: 0.8, selectionLimit: 1 },
-      response => {
-        if (response.didCancel || response.errorCode) return;
-        const uri = response.assets?.[0]?.uri;
-        if (uri) setEvidenceImage(uri);
-      },
-    );
-  };
 
-  const takePhoto = async () => {
-    launchCamera(
-      { mediaType: 'photo', quality: 0.8, saveToPhotos: false },
-      response => {
-        if (response.didCancel || response.errorCode) return;
-        const uri = response.assets?.[0]?.uri;
-        if (uri) setEvidenceImage(uri);
-      },
-    );
-  };
 
   const extractQrImageUrl = (raw: any): string | null => {
     if (!raw) return null;
@@ -735,7 +697,7 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
 
   // ── Check Payment Status (PROPERLY TYPED) ──
   const checkPaymentStatus = useCallback(
-    async (orderId: string) => {
+    async () => {
       if (!componentMountedRef.current) return;
 
       setPaymentCheckLoading(true);
@@ -1684,8 +1646,6 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
   );
 
   const renderStep3 = () => {
-    const showEvidenceError =
-      submitAttempted && paymentMode === 'ONLINE' && !isPaymentDone;
 
     return (
       <>
