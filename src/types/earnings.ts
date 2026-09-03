@@ -1,7 +1,52 @@
+// ─── Filter Period ──────────────────────────────────────────────────────────
 export type EarningsPeriod = 'today' | 'thisWeek' | 'thisMonth' | 'lifetime';
 
+// ─── API 1: Earnings Summary (v3) ───────────────────────────────────────────
+// GET /quickVerse/v3/delivery-partner/earnings-summary?filter=<filter>
+export type PercentageStatus = 'positive' | 'negative';
+
+export interface EarningsBreakdownV3 {
+  baseEarning: number;
+  distanceEarning: number;
+  surgeEarning: number;
+  tips: number;
+}
+
+export interface EarningsSummaryV3 {
+  totalEarnings: number;
+  percentage: number;
+  percentageStatus: PercentageStatus;
+  payoutBalance: number;
+  breakdown: EarningsBreakdownV3;
+}
+
+// ─── API 2: Weekly 7-Day Chart (v3) ─────────────────────────────────────────
+// GET /quickVerse/v3/delivery-partner/earnings-chart
+export interface ChartDayV3 {
+  day: string;
+  amount: number;
+  ordersCount: number;
+}
+
+export interface EarningsChartV3 {
+  totalAmount: number;
+  chartData: ChartDayV3[];
+}
+
+// ─── API 3: Today Orders & Payment Summary (v3) ──────────────────────────────
+// GET /quickVerse/v3/delivery-partner/today-orders-summary
+export interface TodayOrdersSummaryV3 {
+  totalOrders: number;
+  prepaidOrders: number;
+  codOrders: number;
+  cashToSubmit: number;
+}
+
+// ─── Legacy types (kept for backward compat — not used in new Earnings Screen) ──
+/** @deprecated Use EarningsSummaryV3 instead */
 export type TransactionType = 'ALL' | 'COD' | 'UPI' | 'REFUND' | 'BONUS';
 
+/** @deprecated */
 export interface EarningsSummary {
   totalEarnings: number;
   percentageChange: number;
@@ -16,12 +61,14 @@ export interface EarningsSummary {
   prepaidAmount: number;
 }
 
+/** @deprecated */
 export interface DailyEarning {
   day: string;
   amount: number;
   isToday: boolean;
 }
 
+/** @deprecated */
 export interface EarningsBreakdown {
   basePay: number;
   orderEarnings: number;
@@ -32,16 +79,15 @@ export interface EarningsBreakdown {
   total: number;
 }
 
+/** @deprecated */
 export interface TipsDashboard {
   cashTips: number;
   upiTips: number;
   totalTips: number;
-  topTipper: {
-    name: string;
-    amount: number;
-  } | null;
+  topTipper: { name: string; amount: number } | null;
 }
 
+/** @deprecated */
 export interface CashReconciliation {
   collected: number;
   deposited: number;
@@ -50,6 +96,7 @@ export interface CashReconciliation {
   status: 'balanced' | 'surplus' | 'deficit';
 }
 
+/** @deprecated */
 export interface Transaction {
   id: string;
   orderId: string;
@@ -59,6 +106,7 @@ export interface Transaction {
   description: string;
 }
 
+/** @deprecated */
 export interface EarningsData {
   summary: EarningsSummary;
   last7Days: DailyEarning[];
