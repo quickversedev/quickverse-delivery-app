@@ -576,6 +576,77 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
       ? { lat: customerAddress.latitude, lng: customerAddress.longitude }
       : null;
 
+  const distanceInKm = (
+    from: CoordinateData | null,
+    to: CoordinateData | null,
+  ): number | null => {
+    if (!from || !to) return null;
+    const toRadians = (value: number) => (value * Math.PI) / 180;
+    const latitudeDelta = toRadians(to.lat - from.lat);
+    const longitudeDelta = toRadians(to.lng - from.lng);
+    const a =
+      Math.sin(latitudeDelta / 2) ** 2 +
+      Math.cos(toRadians(from.lat)) *
+        Math.cos(toRadians(to.lat)) *
+        Math.sin(longitudeDelta / 2) ** 2;
+    return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  };
+
+  const pickupDistance = distanceInKm(partnerCoord, shopCoord);
+  const dropDistance = distanceInKm(shopCoord, customerCoord);
+  const totalDistance =
+    pickupDistance != null && dropDistance != null
+      ? pickupDistance + dropDistance
+      : null;
+  const displayDistance = (distance: number | null) =>
+    distance == null ? 'N/A' : `${distance.toFixed(1)} km`;
+  const estimatedEarnings = order.finance?.commission;
+  const tipAmount = (order.finance as (typeof order.finance & {
+    tip?: number | null;
+  }) | null)?.tip;
+  const surgeFee = (order.finance as (typeof order.finance & {
+    surgeFee?: number | null;
+  }) | null)?.surgeFee;
+  const isHotOrder = Boolean(
+    (order as DeliveryPartnerOrder & { isHotOrder?: boolean }).isHotOrder,
+  );
+  const rawOrderCreatedAt = order.assignedAt ?? order.orderDetails?.creationTime ?? order.createdAt;
+  const numericOrderCreatedAt = Number(rawOrderCreatedAt);
+  const parsedOrderCreatedAt =
+    rawOrderCreatedAt &&
+    Number.isFinite(numericOrderCreatedAt) &&
+    numericOrderCreatedAt > 0
+      ? new Date(numericOrderCreatedAt)
+      : rawOrderCreatedAt
+      ? new Date(rawOrderCreatedAt.replace(' ', 'T'))
+      : null;
+  const orderCreatedAt =
+    parsedOrderCreatedAt && !Number.isNaN(parsedOrderCreatedAt.getTime())
+      ? parsedOrderCreatedAt.getTime()
+      : null;
+  const assignmentAge = orderCreatedAt
+    ? Math.max(0, Math.floor((Date.now() - orderCreatedAt) / 60000))
+    : null;
+  const assignmentAgeLabel =
+    assignmentAge == null
+      ? 'N/A'
+      : assignmentAge < 1
+      ? 'Just now'
+      : `${assignmentAge} min${assignmentAge === 1 ? '' : 's'} away`;
+  const assignmentElapsedMs = orderCreatedAt
+    ? Date.now() - orderCreatedAt
+    : null;
+  const expiryRemainingSeconds =
+    assignmentElapsedMs != null
+      ? Math.max(0, Math.ceil((150000 - assignmentElapsedMs) / 1000))
+      : null;
+  const orderSummaryTimeLabel =
+    orderStatus === 'PARTNER_ASSIGNED' && expiryRemainingSeconds != null
+      ? expiryRemainingSeconds > 0
+        ? `Expires in ${expiryRemainingSeconds}s`
+        : 'Assignment window expired'
+      : assignmentAgeLabel;
+
   const serviceType: ServiceType = order.shopDetails?.category
     ?.toLowerCase()
     .includes('grocery')
@@ -743,7 +814,7 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
       }
 
       pollingIntervalRef.current = setInterval(() => {
-        checkPaymentStatus(orderId);
+        checkPaymentStatus();
       }, 3000);
     },
     [checkPaymentStatus],
@@ -2180,6 +2251,57 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
         contentContainerStyle={s.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        <View style={s.orderScrollSummary}>
+          <View style={s.orderStatusRow}>
+            <Text style={s.orderSummaryStatus}>
+              {orderStatus === 'DELIVERED' ? 'Delivered' : 'Live Order'}
+              {' • '}
+              {orderSummaryTimeLabel}
+            </Text>
+            {isHotOrder && (
+              <View style={s.hotOrderBadge}>
+                <Text style={s.hotOrderBadgeText}>Hot Order</Text>
+              </View>
+            )}
+          </View>
+
+          <View style={s.orderMetricsRow}>
+            <View style={s.orderMetric}>
+              <Text style={s.orderMetricLabel}>Est. Earnings</Text>
+              <Text style={s.orderMetricValue}>
+                {estimatedEarnings != null
+                  ? formatCurrency(estimatedEarnings)
+                  : 'N/A'}
+              </Text>
+            </View>
+            <View style={s.orderMetricDivider} />
+            <View style={s.orderMetric}>
+              <Text style={s.orderMetricLabel}>Pickup Distance</Text>
+              <Text style={s.orderMetricValue}>{displayDistance(pickupDistance)}</Text>
+            </View>
+            <View style={s.orderMetricDivider} />
+            <View style={s.orderMetric}>
+              <Text style={s.orderMetricLabel}>Drop Distance</Text>
+              <Text style={s.orderMetricValue}>{displayDistance(dropDistance)}</Text>
+            </View>
+            <View style={s.orderMetricDivider} />
+            <View style={s.orderMetric}>
+              <Text style={s.orderMetricLabel}>Total Distance</Text>
+              <Text style={s.orderMetricValue}>{displayDistance(totalDistance)}</Text>
+            </View>
+          </View>
+
+          <View style={s.orderPaymentSummaryRow}>
+            <Text style={s.orderPaymentBadge}>{finalPaymentMethod}</Text>
+            <Text style={s.orderPaymentTime}>
+              Tip: {tipAmount != null ? formatCurrency(Number(tipAmount)) : '₹0.00'}
+            </Text>
+            <Text style={s.orderPaymentTime}>
+              Surge: {surgeFee != null ? formatCurrency(Number(surgeFee)) : '₹0.00'}
+            </Text>
+          </View>
+        </View>
+
         <View style={s.banner}>
           <Text style={s.bannerText}>{STEP_BANNERS[config.stageIndex]}</Text>
         </View>
@@ -2651,6 +2773,110 @@ const s = StyleSheet.create({
     fontSize: 15,
     fontFamily: FONT_FAMILY.bricolageBold,
     color: '#0F172A',
+  },
+  orderSummaryHeader: {
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  orderScrollSummary: {
+    backgroundColor: '#FFFFFF',
+  },
+  orderStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 7,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  orderSummaryTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  orderSummaryTitle: {
+    flex: 1,
+    fontSize: 16,
+    fontFamily: FONT_FAMILY.bricolageBold,
+    color: '#0F172A',
+  },
+  hotOrderBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    backgroundColor: '#FEE2E2',
+  },
+  hotOrderBadgeText: {
+    fontSize: 9,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#DC2626',
+  },
+  orderSummaryStatus: {
+    marginTop: 3,
+    fontSize: 10,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#DC2626',
+  },
+  orderMetricsRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  orderMetric: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 0,
+  },
+  orderMetricLabel: {
+    fontSize: 9,
+    textAlign: 'center',
+    fontFamily: FONT_FAMILY.outfitRegular,
+    color: '#64748B',
+  },
+  orderMetricValue: {
+    marginTop: 4,
+    fontSize: 14,
+    textAlign: 'center',
+    fontFamily: FONT_FAMILY.bricolageBold,
+    color: '#0F172A',
+  },
+  orderMetricDivider: {
+    width: 1,
+    backgroundColor: '#E2E8F0',
+  },
+  orderPaymentSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    backgroundColor: '#F8FAFC',
+    paddingHorizontal: 16,
+    paddingVertical: 7,
+  },
+  orderPaymentBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 4,
+    backgroundColor: '#EFF6FF',
+    fontSize: 9,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#0E6DFD',
+  },
+  orderPaymentTime: {
+    fontSize: 9,
+    fontFamily: FONT_FAMILY.outfitRegular,
+    color: '#64748B',
   },
   stepper: {
     flexDirection: 'row',
