@@ -17,6 +17,10 @@ export type DeliveryPartnerProfile = {
   acceptanceRate?: number;
 };
 
+export type NotificationSettings = {
+  liveOrderPoolNotifications: boolean;
+};
+
 type OrderFinance = {
   itemTotalAmount?: number;
   couponId?: string | null;
@@ -352,6 +356,42 @@ const toggleDeliveryPartnerOnlineStatus = async (
   );
 };
 
+const getNotificationSettings = async (
+  partnerId: string,
+): Promise<NotificationSettings> => {
+  const sessionKey = await TokenStorage.getToken();
+  const data = await apiCall<NotificationSettings>(
+    axiosInstance.get(`/v1/delivery-partner/${partnerId}/notification-settings`, {
+      validateStatus: status => status >= 200 && status < 400,
+      headers: {
+        SessionKey: sessionKey || '',
+        'Request-Origin': 'TRANSPORTER',
+      },
+    }),
+  );
+  return data;
+};
+
+const updateNotificationSettings = async (
+  partnerId: string,
+  settings: Partial<NotificationSettings>,
+): Promise<void> => {
+  const sessionKey = await TokenStorage.getToken();
+  await apiCall(
+    axiosInstance.patch(
+      `/v1/delivery-partner/${partnerId}/notification-settings`,
+      settings,
+      {
+        headers: {
+          SessionKey: sessionKey || '',
+          'Request-Origin': 'TRANSPORTER',
+        },
+        validateStatus: status => status >= 200 && status < 400,
+      }
+    )
+  );
+};
+
 const normalizePartnerOrder = (order: any): DeliveryPartnerOrder => ({
   id: String(order?.id ?? ''),
   assignedAt: order?.assignedAt ? String(order.assignedAt) : null,
@@ -637,8 +677,6 @@ const getAssignedOrdersByPartnerId = async (
       validateStatus: status => status >= 200 && status < 400,
     }),
   );
-
-  console.log("Raw Orders : ", data?.content);
 
   if (Array.isArray(data?.content))
     return data.content.map(normalizePartnerOrder);
@@ -945,6 +983,34 @@ const completeDelivery = async (
   );
 };
 
+const getDeliveryPartnerHistory = async (
+  partnerId: string,
+  page = 0,
+  size = 10,
+  fromDate?: string,
+  toDate?: string,
+): Promise<any> => {
+  const sessionKey = await TokenStorage.getToken();
+  const params = new URLSearchParams({
+    page: String(page),
+    size: String(size),
+  });
+
+  if (fromDate) params.append('fromDate', fromDate);
+  if (toDate) params.append('toDate', toDate);
+
+  const response = await apiCall<any>(
+    axiosInstance.get(`/v1/order-master/delivery-partner/${partnerId}?${params.toString()}`, {
+      headers: {
+        SessionKey: sessionKey || '',
+        'Request-Origin': 'CAPTAIN',
+      },
+      validateStatus: status => status >= 200 && status < 400,
+    }),
+  );
+  return response.data;
+};
+
 const deliveryPartnerService = {
   generatePaymentQr,
   getPaymentQrStatus,
@@ -962,6 +1028,10 @@ const deliveryPartnerService = {
   pickupOrder,
   arriveAtDestination,
   completeDelivery,
+  getNotificationSettings,
+  updateNotificationSettings,
+  getDeliveryPartnerHistory,
 };
 
 export default deliveryPartnerService;
+

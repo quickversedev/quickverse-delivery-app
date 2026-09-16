@@ -1,23 +1,47 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ToastAndroid, Platform, Alert, Modal } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, ActivityIndicator } from 'react-native';
 import { FONT_FAMILY } from '../../theme/typography';
-import type { ShiftResponse } from '../../types/shift.types';
+import shiftService from '../../services/shift.service';
+import { CheckCircle, XCircle, X, Info } from 'lucide-react-native';
 
 interface Props {
   visible: boolean;
   onClose: () => void;
-  shifts: ShiftResponse[];
+  onSuccess: () => void;
+  isToday: boolean;
+  partnerId: string;
+  shiftId: string | null;
 }
 
-const CancelShiftsModal: React.FC<Props> = ({ visible, onClose, shifts }) => {
-  const totalPenalty = shifts.reduce((sum, shift) => sum + (shift.penaltyAmount || 0), 0);
-  const shiftCount = shifts.length;
+type ModalState = 'IDLE' | 'LOADING' | 'SUCCESS' | 'FAILED';
 
-  const handleConfirmPay = () => {
-    if (Platform.OS === 'android') {
-      ToastAndroid.show('Payment feature is coming soon!', ToastAndroid.SHORT);
-    } else {
-      Alert.alert('Coming Soon', 'Payment feature is coming soon!');
+const CancelShiftsModal: React.FC<Props> = ({ visible, onClose, onSuccess, isToday, partnerId, shiftId }) => {
+  const [modalState, setModalState] = useState<ModalState>('IDLE');
+  const [responseMsg, setResponseMsg] = useState('');
+
+  // Reset state when opened
+  React.useEffect(() => {
+    if (visible) {
+      setModalState('IDLE');
+      setResponseMsg('');
+    }
+  }, [visible]);
+
+  const handleConfirm = async () => {
+    if (!shiftId) return;
+    setModalState('LOADING');
+    try {
+      const res = await shiftService.cancelShift(partnerId, shiftId);
+      setResponseMsg(res?.message || 'Shift cancelled successfully.');
+      setModalState('SUCCESS');
+      
+      // Auto close and reload after 2 seconds
+      setTimeout(() => {
+        onSuccess();
+      }, 2000);
+    } catch (err: any) {
+      setResponseMsg(err?.message || 'Failed to cancel shift. Please try again.');
+      setModalState('FAILED');
     }
   };
 
@@ -25,30 +49,74 @@ const CancelShiftsModal: React.FC<Props> = ({ visible, onClose, shifts }) => {
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.overlay}>
         <View style={styles.card}>
-          <Text style={styles.title}>Cancel Shifts?</Text>
-          <Text style={styles.desc}>
-            Canceling today's shifts will incur a penalty of ₹10 for every shift canceled. This action cannot be undone.
-          </Text>
+          {/* Close button top right */}
+          {(modalState === 'IDLE' || modalState === 'FAILED' || modalState === 'SUCCESS') && (
+            <TouchableOpacity style={styles.closeIcon} onPress={modalState === 'SUCCESS' ? onSuccess : onClose}>
+              <X size={20} color="#64748B" />
+            </TouchableOpacity>
+          )}
 
-          <View style={styles.penaltyBox}>
-            <View style={styles.row}>
-              <Text style={styles.penaltyLabel}>Penalty ({shiftCount} shift{shiftCount > 1 ? 's' : ''})</Text>
-              <Text style={styles.penaltyValue}>₹{totalPenalty}</Text>
+          {modalState === 'IDLE' && (
+            <>
+              <Text style={styles.title}>Cancel Shift?</Text>
+              {isToday ? (
+                <Text style={styles.desc}>
+                  Are you sure you want to cancel this shift? Canceling a same-day shift will incur a ₹10 penalty, which will be auto-deducted from your next payout.
+                </Text>
+              ) : (
+                <Text style={styles.desc}>
+                  Are you sure you want to cancel this shift? (Free cancellation)
+                </Text>
+              )}
+
+              <TouchableOpacity 
+                style={[styles.confirmBtn, !isToday && { backgroundColor: '#1D6BFC' }]} 
+                onPress={handleConfirm} 
+                activeOpacity={0.85}
+              >
+                <Text style={styles.confirmBtnText}>
+                  {isToday ? 'CANCEL & PAY PENALTY' : 'CONFIRM'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.goBackBtn} onPress={onClose} activeOpacity={0.85}>
+                <Text style={styles.goBackBtnText}>GO BACK</Text>
+              </TouchableOpacity>
+            </>
+          )}
+
+          {modalState === 'LOADING' && (
+            <View style={styles.stateContainer}>
+              <View style={styles.loadingCircle}>
+                <ActivityIndicator size="large" color="#DC2626" />
+              </View>
+              <Text style={styles.stateTitle}>Cancelling shift...</Text>
             </View>
-            <View style={styles.divider} />
-            <View style={styles.row}>
-              <Text style={styles.totalLabel}>Total Penalty</Text>
-              <Text style={styles.totalValue}>₹{totalPenalty}</Text>
+          )}
+
+          {modalState === 'SUCCESS' && (
+            <View style={styles.stateContainer}>
+              <CheckCircle size={56} color="#16A34A" strokeWidth={1.5} style={{ marginBottom: 16 }} />
+              <Text style={styles.stateTitle}>Successfully Cancelled</Text>
+              <Text style={styles.stateDesc}>{responseMsg}</Text>
             </View>
-          </View>
+          )}
 
-          <TouchableOpacity style={styles.confirmBtn} onPress={handleConfirmPay} activeOpacity={0.85}>
-            <Text style={styles.confirmBtnText}>CONFIRM & PAY PENALTY</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.goBackBtn} onPress={onClose} activeOpacity={0.85}>
-            <Text style={styles.goBackBtnText}>GO BACK</Text>
-          </TouchableOpacity>
+          {modalState === 'FAILED' && (
+            <View style={styles.stateContainer}>
+              <XCircle size={56} color="#DC2626" strokeWidth={1.5} style={{ marginBottom: 16 }} />
+              <Text style={styles.stateTitle}>Failed to cancel</Text>
+              <Text style={styles.stateDesc}>{responseMsg}</Text>
+              
+              <TouchableOpacity style={[styles.confirmBtn, { width: '100%', marginTop: 24 }]} onPress={handleConfirm} activeOpacity={0.85}>
+                <Text style={styles.confirmBtnText}>TRY AGAIN</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity style={[styles.goBackBtn, { width: '100%' }]} onPress={onClose} activeOpacity={0.85}>
+                <Text style={styles.goBackBtnText}>GO BACK</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       </View>
     </Modal>
@@ -72,6 +140,14 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 20,
     elevation: 8,
+    position: 'relative',
+  },
+  closeIcon: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    padding: 4,
+    zIndex: 10,
   },
   title: {
     fontSize: 20,
@@ -84,45 +160,7 @@ const styles = StyleSheet.create({
     fontFamily: FONT_FAMILY.outfitRegular,
     color: '#64748B',
     lineHeight: 20,
-    marginBottom: 20,
-  },
-  penaltyBox: {
-    backgroundColor: '#FFF5F5',
-    borderWidth: 1,
-    borderColor: '#FEE2E2',
-    borderRadius: 12,
-    padding: 16,
     marginBottom: 24,
-  },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#FEE2E2',
-    marginVertical: 12,
-  },
-  penaltyLabel: {
-    fontSize: 14,
-    fontFamily: FONT_FAMILY.outfitRegular,
-    color: '#475569',
-  },
-  penaltyValue: {
-    fontSize: 16,
-    fontFamily: FONT_FAMILY.bricolageBold,
-    color: '#DC2626',
-  },
-  totalLabel: {
-    fontSize: 15,
-    fontFamily: FONT_FAMILY.outfitBold,
-    color: '#0F172A',
-  },
-  totalValue: {
-    fontSize: 20,
-    fontFamily: FONT_FAMILY.bricolageBold,
-    color: '#DC2626',
   },
   confirmBtn: {
     backgroundColor: '#DC2626',
@@ -138,7 +176,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   goBackBtn: {
-    backgroundColor: '#E2E8F0',
+    backgroundColor: '#DCFCE7',
     borderRadius: 12,
     paddingVertical: 15,
     alignItems: 'center',
@@ -146,8 +184,35 @@ const styles = StyleSheet.create({
   goBackBtnText: {
     fontSize: 14,
     fontFamily: FONT_FAMILY.outfitBold,
-    color: '#475569',
+    color: '#16A34A',
     letterSpacing: 0.5,
+  },
+  stateContainer: {
+    alignItems: 'center',
+    paddingVertical: 16,
+  },
+  loadingCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#FEF2F2',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  stateTitle: {
+    fontSize: 18,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#0F172A',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  stateDesc: {
+    fontSize: 13,
+    fontFamily: FONT_FAMILY.outfitRegular,
+    color: '#64748B',
+    textAlign: 'center',
+    lineHeight: 18,
   },
 });
 

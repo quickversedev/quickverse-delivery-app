@@ -3,6 +3,7 @@ export type ShiftStatus = 'CONFIRMED' | 'CANCELLED' | 'AVAILABLE';
 
 export interface ShiftResponse {
   id: string | null;           // null if not booked
+  shiftConfigId: string;       // Unique ID for the shift slot
   shiftCode: string;           // Maps to ShiftType or similar
   shiftName: string;           
   shiftWindow: string;         
@@ -15,12 +16,13 @@ export interface ShiftResponse {
   isLocked: boolean;           // true if today + booked (cannot cancel for free)
   canBook: boolean;            // false if today (same-day booking disabled)
   penaltyAmount: number;       // ₹10.00 for today cancels, ₹0.00 for tomorrow
+  penaltyStatus?: string;      // e.g., 'PENDING_DEDUCTION'
   status?: ShiftStatus;        // fallback if needed
 }
 
 export interface ShiftBookingBatchRequest {
   shiftDate: string;
-  shiftCodes: string[];
+  shiftConfigIds: string[];
 }
 
 export const SHIFT_LABELS: Record<string, string> = {

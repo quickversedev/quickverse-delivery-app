@@ -25,6 +25,7 @@ const bookShiftsBatch = async (
       { headers },
     ),
   );
+  console.log('Book Shifts Response:', data);
   return data?.data ?? [];
 };
 
@@ -40,22 +41,28 @@ const getShifts = async (
       validateStatus: s => s < 500,
     }),
   );
+  
+  console.log(`Shift API Response for ${date}:`, data);
+
   if (Array.isArray(data)) return data;
   if (Array.isArray(data?.data)) return data.data;
+  if (Array.isArray(data?.data?.shifts)) return data.data.shifts;
   return [];
 };
 
 const cancelShift = async (
   partnerId: string,
   shiftId: string,
-): Promise<void> => {
+): Promise<any> => {
   const headers = await getHeaders();
-  await apiCall(
+  const res = await apiCall<{ data: any }>(
     axiosInstance.delete(
       `/quickVerse/v3/rider/${partnerId}/shifts/${shiftId}`,
       { headers, validateStatus: s => s < 500 },
     ),
   );
+  console.log('Cancel Shift Response:', res);
+  return res;
 };
 
 const getActiveShift = async (

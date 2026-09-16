@@ -9,6 +9,8 @@ import {
   Alert,
   ToastAndroid,
   Platform,
+  Image,
+  RefreshControl,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Calendar as CalendarIcon, Info, Sun, Coffee, Utensils, SunDim, Sunset, Moon, Check, Lock, X } from 'lucide-react-native';
@@ -18,6 +20,7 @@ import shiftService from '../services/shift.service';
 import type { ShiftResponse } from '../types/shift.types';
 import CancelShiftsModal from '../components/shifts/CancelShiftsModal';
 import HowItWorksModal from '../components/shifts/HowItWorksModal';
+import CustomToast from '../components/ui/CustomToast';
 
 type DayTab = 'today' | 'tomorrow';
 
@@ -64,18 +67,19 @@ const ShiftSelectionScreen: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<DayTab>('today');
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
 
   // Server state for active tab
   const [shifts, setShifts] = useState<ShiftResponse[]>([]);
   
-  // UI selection state (local changes)
   const [selectedForBooking, setSelectedForBooking] = useState<Set<string>>(new Set());
   const [selectedForCancellation, setSelectedForCancellation] = useState<Set<string>>(new Set());
 
-  // Modals
+  // Modals & Toasts
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [showHowItWorks, setShowHowItWorks] = useState(false);
+  const [toastConfig, setToastConfig] = useState({ visible: false, message: '', duration: 3000 });
 
   const activeDateStr = activeTab === 'today' ? TODAY_STR : TOMORROW_STR;
 
@@ -84,32 +88,52 @@ const ShiftSelectionScreen: React.FC = () => {
     setLoading(true);
     try {
       const data = await shiftService.getShifts(partnerId, activeDateStr);
-      setShifts(data);
+      setShifts(data || []);
       setSelectedForBooking(new Set());
       setSelectedForCancellation(new Set());
-    } catch {
-      // network failure — leave lists empty, user can retry
+    } catch (e) {
+      console.error("Failed to load shifts: ", e);
+      setShifts([]);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [partnerId, activeDateStr]);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    loadShifts();
+  }, [loadShifts]);
 
   useEffect(() => {
     loadShifts();
   }, [loadShifts]);
 
-  const toggleBooking = (shiftCode: string) => {
+  const toggleBooking = (shiftConfigId: string) => {
     setSelectedForBooking(prev => {
       const next = new Set(prev);
-      next.has(shiftCode) ? next.delete(shiftCode) : next.add(shiftCode);
+      next.has(shiftConfigId) ? next.delete(shiftConfigId) : next.add(shiftConfigId);
       return next;
     });
   };
 
   const toggleCancellation = (shiftId: string) => {
     setSelectedForCancellation(prev => {
+      if (prev.has(shiftId)) {
+        const next = new Set(prev);
+        next.delete(shiftId);
+        return next;
+      }
+      if (prev.size >= 1) {
+        if (Platform.OS === 'android') {
+          ToastAndroid.show('You can only cancel one shift at a time.', ToastAndroid.SHORT);
+        } else {
+          Alert.alert('Single Cancellation', 'You can only cancel one shift at a time.');
+        }
+        return prev;
+      }
       const next = new Set(prev);
-      next.has(shiftId) ? next.delete(shiftId) : next.add(shiftId);
+      next.add(shiftId);
       return next;
     });
   };
@@ -122,9 +146,8 @@ const ShiftSelectionScreen: React.FC = () => {
   const totalEstimatedEarnings = useMemo(() => {
     let sum = 0;
     shifts.forEach(s => {
-      // If booked and not cancelling, or not booked but booking
       const isCancelling = s.id && selectedForCancellation.has(s.id);
-      const isBooking = selectedForBooking.has(s.shiftCode);
+      const isBooking = selectedForBooking.has(s.shiftConfigId);
       if ((s.isBooked && !isCancelling) || (!s.isBooked && isBooking)) {
         sum += s.estimatedEarnings || 0;
       }
@@ -138,10 +161,8 @@ const ShiftSelectionScreen: React.FC = () => {
     if (!hasChanges) return;
     
     if (selectedForCancellation.size > 0) {
-      // Show Penalty Modal if there are cancellations
       setShowCancelModal(true);
     } else {
-      // Direct booking
       executeBooking();
     }
   };
@@ -152,7 +173,7 @@ const ShiftSelectionScreen: React.FC = () => {
       if (selectedForBooking.size > 0) {
         await shiftService.bookShiftsBatch(partnerId, {
           shiftDate: activeDateStr,
-          shiftCodes: Array.from(selectedForBooking),
+          shiftConfigIds: Array.from(selectedForBooking),
         });
       }
       
@@ -174,8 +195,15 @@ const ShiftSelectionScreen: React.FC = () => {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      {/* Header */}
-      <View style={styles.header}>
+      <ScrollView 
+        contentContainerStyle={{ paddingBottom: 100 }} 
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#1A6BFF']} />
+        }
+      >
+        {/* Header */}
+        <View style={styles.header}>
         <View>
           <Text style={styles.headerTitle}>My Shifts</Text>
           <Text style={styles.headerSubtitle}>Choose your shifts</Text>
@@ -222,35 +250,40 @@ const ShiftSelectionScreen: React.FC = () => {
         </View>
       </View>
 
-      {loading ? (
+      {loading && !refreshing ? (
         <View style={styles.loader}>
           <ActivityIndicator size="large" color="#1A6BFF" />
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-          {shifts.map(shift => {
+        <View style={styles.scroll}>
+          {shifts.map((shift, index) => {
             const isCancelling = shift.id ? selectedForCancellation.has(shift.id) : false;
-            const isBooking = selectedForBooking.has(shift.shiftCode);
+            const isBooking = selectedForBooking.has(shift.shiftConfigId);
             
-            const isHighDemand = shift.demandLevel?.toLowerCase().includes('high');
-            const demandColor = isHighDemand ? '#DC2626' : '#64748B';
+            const demandText = shift.demandLevel?.toLowerCase() || '';
+            let demandColor = '#64748B'; // Default
+            if (demandText.includes('high')) demandColor = '#16A34A'; // Green
+            else if (demandText.includes('medium')) demandColor = '#F59E0B'; // Amber
+            else if (demandText.includes('low')) demandColor = '#FCA5A5'; // Light Red
+            
             const durationDisplay = shift.shiftDuration || shift.totalShiftHours || shift.durationText || '2h';
 
             return (
               <TouchableOpacity
-                key={shift.id || shift.shiftCode}
+                key={`${shift.id || 'none'}-${shift.shiftConfigId || 'none'}-${index}`}
                 style={[
                   styles.shiftRow,
                   isBooking && styles.shiftRowSelected,
                   isCancelling && styles.shiftRowCancel,
                   !shift.canBook && !shift.isBooked && styles.shiftRowDisabled,
                 ]}
-                disabled={!shift.canBook && !shift.isBooked}
                 onPress={() => {
                   if (shift.isBooked && shift.id) {
                     toggleCancellation(shift.id);
                   } else if (shift.canBook) {
-                    toggleBooking(shift.shiftCode);
+                    toggleBooking(shift.shiftConfigId);
+                  } else {
+                    setToastConfig({ visible: true, message: "Can't create today's shift. You can only cancel an existing shift with a penalty.", duration: 3000 });
                   }
                 }}
                 activeOpacity={0.8}
@@ -270,6 +303,11 @@ const ShiftSelectionScreen: React.FC = () => {
                     <Text style={{ fontSize: 11 }}>🕓</Text> {durationDisplay}  •  
                     <Text style={{ color: demandColor, fontFamily: FONT_FAMILY.outfitBold }}> {shift.demandLevel || 'Normal'}</Text>
                   </Text>
+                  {!shift.isBooked && shift.penaltyStatus === 'PENDING_DEDUCTION' && (
+                    <View style={styles.penaltyAppliedTag}>
+                      <Text style={styles.penaltyAppliedText}>Penalty Applied: ₹10 (Auto-deduction pending)</Text>
+                    </View>
+                  )}
                 </View>
 
                 {/* Right Area */}
@@ -279,20 +317,23 @@ const ShiftSelectionScreen: React.FC = () => {
                   </Text>
                   <Text style={styles.estLabel}>Est. Earnings</Text>
 
-                  <View style={{ marginTop: 8 }}>
-                    {shift.isLocked ? (
-                      <View style={styles.statusBadgeWrap}>
-                        <View style={styles.greenTick}><Check size={11} color="#FFF" strokeWidth={3} /></View>
-                        <View style={[styles.lockBox, isCancelling && styles.lockBoxCancel]}>
-                          {isCancelling ? <X size={12} color="#DC2626" strokeWidth={3} /> : <Lock size={12} color="#64748B" />}
+                  <View style={{ marginTop: 8, alignItems: 'flex-end' }}>
+                    {shift.isBooked ? (
+                      <View style={{ alignItems: 'flex-end' }}>
+                        <View style={[styles.greenTick, { width: 24, height: 24, borderRadius: 12, marginBottom: 8 }]}>
+                          <Check size={14} color="#FFF" strokeWidth={3} />
                         </View>
-                      </View>
-                    ) : shift.isBooked ? (
-                      <View style={styles.statusBadgeWrap}>
-                        <View style={styles.greenTick}><Check size={11} color="#FFF" strokeWidth={3} /></View>
-                        <View style={[styles.lockBox, isCancelling && styles.lockBoxCancel]}>
-                          {isCancelling ? <X size={12} color="#DC2626" strokeWidth={3} /> : <Lock size={12} color="#64748B" />}
-                        </View>
+                        <TouchableOpacity
+                          style={[styles.cancelBtn, isCancelling && styles.cancelBtnActive]}
+                          onPress={() => shift.id && toggleCancellation(shift.id)}
+                          activeOpacity={0.8}
+                        >
+                          {isCancelling ? (
+                            <Text style={styles.undoBtnText}>Undo</Text>
+                          ) : (
+                            <Text style={styles.cancelBtnText}>Cancel</Text>
+                          )}
+                        </TouchableOpacity>
                       </View>
                     ) : shift.canBook ? (
                       <View style={[styles.checkbox, isBooking && styles.checkboxActive]}>
@@ -306,8 +347,9 @@ const ShiftSelectionScreen: React.FC = () => {
               </TouchableOpacity>
             );
           })}
-        </ScrollView>
+        </View>
       )}
+      </ScrollView>
 
       {/* Footer */}
       {!loading && (
@@ -340,12 +382,30 @@ const ShiftSelectionScreen: React.FC = () => {
       <CancelShiftsModal
         visible={showCancelModal}
         onClose={() => setShowCancelModal(false)}
-        shifts={shifts.filter(s => s.id && selectedForCancellation.has(s.id))}
+        onSuccess={() => {
+          setShowCancelModal(false);
+          setSelectedForCancellation(new Set());
+          loadShifts();
+          // If they also selected shifts to book, trigger that
+          if (selectedForBooking.size > 0) {
+            executeBooking();
+          }
+        }}
+        isToday={activeTab === 'today'}
+        partnerId={partnerId}
+        shiftId={selectedForCancellation.size > 0 ? Array.from(selectedForCancellation)[0] : null}
       />
       
       <HowItWorksModal
         visible={showHowItWorks}
         onClose={() => setShowHowItWorks(false)}
+      />
+
+      <CustomToast
+        visible={toastConfig.visible}
+        message={toastConfig.message}
+        duration={toastConfig.duration}
+        onHide={() => setToastConfig({ visible: false, message: '', duration: 3000 })}
       />
     </View>
   );
@@ -358,8 +418,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     paddingHorizontal: 20,
     paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -538,6 +596,21 @@ const styles = StyleSheet.create({
     fontFamily: FONT_FAMILY.outfitRegular,
     color: '#94A3B8',
   },
+  penaltyAppliedTag: {
+    marginTop: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: '#FEF2F2',
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: '#FEE2E2',
+  },
+  penaltyAppliedText: {
+    fontSize: 10,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#DC2626',
+  },
 
   shiftRight: { alignItems: 'flex-end' },
   earning: {
@@ -565,20 +638,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 2,
   },
-  lockBox: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
-    backgroundColor: '#F1F5F9',
-    justifyContent: 'center',
+  cancelBtn: {
+    backgroundColor: '#F8FAFC',
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
     alignItems: 'center',
-    marginLeft: -6,
-    paddingLeft: 4,
+    justifyContent: 'center',
   },
-  lockBoxCancel: {
-    backgroundColor: '#FEE2E2',
+  cancelBtnActive: {
+    backgroundColor: '#DCFCE7',
+    borderColor: '#DCFCE7',
   },
-
+  undoBtnText: {
+    fontSize: 11,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#16A34A',
+  },
+  cancelBtnText: {
+    fontSize: 11,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#64748B',
+  },
   checkbox: {
     width: 22,
     height: 22,

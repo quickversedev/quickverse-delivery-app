@@ -22,8 +22,13 @@ import {
   ChevronRight,
   BadgeCheck,
   LogOut,
+  ClipboardList,
 } from 'lucide-react-native';
 import Svg, { Defs, LinearGradient, Stop, Rect } from 'react-native-svg';
+
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../navigation/AppNavigator';
 
 import useAuthStore from '../hooks/useAuthStore';
 import { FONT_FAMILY } from '../theme/typography';
@@ -33,6 +38,7 @@ import CustomToast from '../components/ui/CustomToast';
 
 const ProfileScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { partnerProfile, authData, refreshPartnerProfile, logout } = useAuthStore();
   const [isLogoutModalVisible, setIsLogoutModalVisible] = React.useState(false);
   const [isNotificationModalVisible, setIsNotificationModalVisible] = React.useState(false);
@@ -67,7 +73,7 @@ const ProfileScreen: React.FC = () => {
   };
 
   const handleSaveNotificationSettings = () => {
-    setToastConfig({ visible: true, message: 'Settings saved successfully' });
+    setToastConfig({ visible: true, message: 'Notification Updated' });
     // Refresh profile in background to sync settings if needed
     refreshPartnerProfile();
   };
@@ -174,6 +180,16 @@ const ProfileScreen: React.FC = () => {
 
         {/* ── Menu Options ── */}
         <View style={styles.menuSection}>
+          <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('OrderHistory')} activeOpacity={0.8}>
+            <View style={styles.menuItemLeft}>
+              <View style={[styles.menuIconWrap, { backgroundColor: '#F1F5F9' }]}>
+                <ClipboardList size={20} color="#475569" />
+              </View>
+              <Text style={styles.menuItemText}>Order History</Text>
+            </View>
+            <ChevronRight size={20} color="#94A3B8" />
+          </TouchableOpacity>
+
           <TouchableOpacity 
             style={styles.menuItem} 
             onPress={() => setIsNotificationModalVisible(true)} 
@@ -188,7 +204,7 @@ const ProfileScreen: React.FC = () => {
             <ChevronRight size={20} color="#94A3B8" />
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.menuItem} onPress={handleComingSoon} activeOpacity={0.8}>
+          <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('Support')} activeOpacity={0.8}>
             <View style={styles.menuItemLeft}>
               <View style={[styles.menuIconWrap, { backgroundColor: '#F1F5F9' }]}>
                 <HelpCircle size={20} color="#475569" />
@@ -198,7 +214,7 @@ const ProfileScreen: React.FC = () => {
             <ChevronRight size={20} color="#94A3B8" />
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.menuItem} onPress={handleComingSoon} activeOpacity={0.8}>
+          <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('ReferAndEarn')} activeOpacity={0.8}>
             <View style={styles.menuItemLeft}>
               <View style={[styles.menuIconWrap, { backgroundColor: '#F1F5F9' }]}>
                 <Gift size={20} color="#475569" />
