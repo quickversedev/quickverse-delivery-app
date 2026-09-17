@@ -72,7 +72,7 @@ const ShiftSelectionScreen: React.FC = () => {
 
   // Server state for active tab
   const [shifts, setShifts] = useState<ShiftResponse[]>([]);
-  
+
   const [selectedForBooking, setSelectedForBooking] = useState<Set<string>>(new Set());
   const [selectedForCancellation, setSelectedForCancellation] = useState<Set<string>>(new Set());
 
@@ -159,7 +159,7 @@ const ShiftSelectionScreen: React.FC = () => {
 
   const handleSave = async () => {
     if (!hasChanges) return;
-    
+
     if (selectedForCancellation.size > 0) {
       setShowCancelModal(true);
     } else {
@@ -176,10 +176,10 @@ const ShiftSelectionScreen: React.FC = () => {
           shiftConfigIds: Array.from(selectedForBooking),
         });
       }
-      
+
       // Schedule local notifications for these shifts in future update
       // scheduleShiftNotifications(Array.from(selectedForBooking));
-      
+
       if (Platform.OS === 'android') {
         ToastAndroid.show('Shifts updated successfully', ToastAndroid.SHORT);
       } else {
@@ -195,8 +195,8 @@ const ShiftSelectionScreen: React.FC = () => {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <ScrollView 
-        contentContainerStyle={{ paddingBottom: 100 }} 
+      <ScrollView
+        contentContainerStyle={{ paddingBottom: 100 }}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#1A6BFF']} />
@@ -204,151 +204,156 @@ const ShiftSelectionScreen: React.FC = () => {
       >
         {/* Header */}
         <View style={styles.header}>
-        <View>
-          <Text style={styles.headerTitle}>My Shifts</Text>
-          <Text style={styles.headerSubtitle}>Choose your shifts</Text>
+          <View>
+            <Text style={styles.headerTitle}>My Shifts</Text>
+            <Text style={styles.headerSubtitle}>Choose your shifts</Text>
+          </View>
+          <TouchableOpacity style={styles.howItWorksBtn} onPress={() => setShowHowItWorks(true)}>
+            <Info size={14} color="#1D6BFC" style={{ marginRight: 4 }} />
+            <Text style={styles.howItWorksText}>How it works</Text>
+          </TouchableOpacity>
         </View>
-        <TouchableOpacity style={styles.howItWorksBtn} onPress={() => setShowHowItWorks(true)}>
-          <Info size={14} color="#1D6BFC" style={{ marginRight: 4 }} />
-          <Text style={styles.howItWorksText}>How it works</Text>
-        </TouchableOpacity>
-      </View>
 
-      {/* Day Tabs */}
-      <View style={styles.tabRow}>
-        <View style={styles.tabsContainer}>
-          {(['today', 'tomorrow'] as DayTab[]).map(tab => {
-            const isActive = activeTab === tab;
-            const dateStr = tab === 'today' ? TODAY_STR : TOMORROW_STR;
-            return (
-              <TouchableOpacity
-                key={tab}
-                style={[styles.tab, isActive && styles.tabActive]}
-                onPress={() => setActiveTab(tab)}
-                activeOpacity={0.75}>
-                <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
-                  {tab === 'today' ? 'Today' : 'Tomorrow'}
-                </Text>
-                <Text style={[styles.tabDate, isActive && styles.tabDateActive]}>
-                  {formatDateDisplay(dateStr)}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-        <View style={styles.calendarIconBox}>
-          <CalendarIcon size={20} color="#64748B" />
-        </View>
-      </View>
-
-      {/* Static Info Box */}
-      <View style={styles.infoBox}>
-        <Info size={18} color="#475569" />
-        <View style={styles.infoTextCol}>
-          <Text style={styles.infoTitle}>High demand expected tomorrow!</Text>
-          <Text style={styles.infoSubtitle}>Book your shifts early to earn more.</Text>
-        </View>
-      </View>
-
-      {loading && !refreshing ? (
-        <View style={styles.loader}>
-          <ActivityIndicator size="large" color="#1A6BFF" />
-        </View>
-      ) : (
-        <View style={styles.scroll}>
-          {shifts.map((shift, index) => {
-            const isCancelling = shift.id ? selectedForCancellation.has(shift.id) : false;
-            const isBooking = selectedForBooking.has(shift.shiftConfigId);
-            
-            const demandText = shift.demandLevel?.toLowerCase() || '';
-            let demandColor = '#64748B'; // Default
-            if (demandText.includes('high')) demandColor = '#16A34A'; // Green
-            else if (demandText.includes('medium')) demandColor = '#F59E0B'; // Amber
-            else if (demandText.includes('low')) demandColor = '#FCA5A5'; // Light Red
-            
-            const durationDisplay = shift.shiftDuration || shift.totalShiftHours || shift.durationText || '2h';
-
-            return (
-              <TouchableOpacity
-                key={`${shift.id || 'none'}-${shift.shiftConfigId || 'none'}-${index}`}
-                style={[
-                  styles.shiftRow,
-                  isBooking && styles.shiftRowSelected,
-                  isCancelling && styles.shiftRowCancel,
-                  !shift.canBook && !shift.isBooked && styles.shiftRowDisabled,
-                ]}
-                onPress={() => {
-                  if (shift.isBooked && shift.id) {
-                    toggleCancellation(shift.id);
-                  } else if (shift.canBook) {
-                    toggleBooking(shift.shiftConfigId);
-                  } else {
-                    setToastConfig({ visible: true, message: "Can't create today's shift. You can only cancel an existing shift with a penalty.", duration: 3000 });
-                  }
-                }}
-                activeOpacity={0.8}
-              >
-                {/* Left Icon */}
-                <View style={[styles.iconWrap, (isBooking || shift.isBooked) ? styles.iconWrapActive : {}]}>
-                  {getShiftIcon(shift.shiftCode, (isBooking || shift.isBooked) ? '#FFFFFF' : '#1D6BFC')}
-                </View>
-
-                {/* Middle Info */}
-                <View style={styles.shiftInfo}>
-                  <Text style={[styles.shiftWindow, (isBooking || shift.isBooked) && { color: '#0F172A' }]}>
-                    {shift.shiftWindow}
+        {/* Day Tabs */}
+        <View style={styles.tabRow}>
+          <View style={styles.tabsContainer}>
+            {(['today', 'tomorrow'] as DayTab[]).map(tab => {
+              const isActive = activeTab === tab;
+              const dateStr = tab === 'today' ? TODAY_STR : TOMORROW_STR;
+              return (
+                <TouchableOpacity
+                  key={tab}
+                  style={[styles.tab, isActive && styles.tabActive]}
+                  onPress={() => setActiveTab(tab)}
+                  activeOpacity={0.75}>
+                  <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
+                    {tab === 'today' ? 'Today' : 'Tomorrow'}
                   </Text>
-                  <Text style={styles.shiftName}>{shift.shiftName}</Text>
-                  <Text style={styles.shiftMeta}>
-                    <Text style={{ fontSize: 11 }}>🕓</Text> {durationDisplay}  •  
-                    <Text style={{ color: demandColor, fontFamily: FONT_FAMILY.outfitBold }}> {shift.demandLevel || 'Normal'}</Text>
+                  <Text style={[styles.tabDate, isActive && styles.tabDateActive]}>
+                    {formatDateDisplay(dateStr)}
                   </Text>
-                  {!shift.isBooked && shift.penaltyStatus === 'PENDING_DEDUCTION' && (
-                    <View style={styles.penaltyAppliedTag}>
-                      <Text style={styles.penaltyAppliedText}>Penalty Applied: ₹10 (Auto-deduction pending)</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <View style={styles.calendarIconBox}>
+            <CalendarIcon size={20} color="#64748B" />
+          </View>
+        </View>
+
+        {/* Static Info Box */}
+        <View style={styles.infoBox}>
+          <Info size={18} color="#475569" />
+          <View style={styles.infoTextCol}>
+            <Text style={styles.infoTitle}>High demand expected tomorrow!</Text>
+            <Text style={styles.infoSubtitle}>Book your shifts early to earn more.</Text>
+          </View>
+        </View>
+
+        {loading && !refreshing ? (
+          <View style={styles.loader}>
+            <ActivityIndicator size="large" color="#1A6BFF" />
+          </View>
+        ) : (
+          <View style={styles.scroll}>
+            {shifts.map((shift, index) => {
+              const isCancelling = shift.id ? selectedForCancellation.has(shift.id) : false;
+              const isBooking = selectedForBooking.has(shift.shiftConfigId);
+
+              const demandText = shift.demandLevel?.toLowerCase() || '';
+              let demandColor = '#64748B'; // Default
+              if (demandText.includes('high')) demandColor = '#16A34A'; // Green
+              else if (demandText.includes('medium')) demandColor = '#F59E0B'; // Amber
+              else if (demandText.includes('low')) demandColor = '#FCA5A5'; // Light Red
+
+              const durationDisplay = shift.shiftDuration || shift.totalShiftHours || shift.durationText || '2h';
+
+              return (
+                <TouchableOpacity
+                  key={`${shift.id || 'none'}-${shift.shiftConfigId || 'none'}-${index}`}
+                  style={[
+                    styles.shiftRow,
+                    isBooking && styles.shiftRowSelected,
+                    isCancelling && styles.shiftRowCancel,
+                    !shift.canBook && !shift.isBooked && styles.shiftRowDisabled,
+                  ]}
+                  onPress={() => {
+                    if (shift.isBooked && shift.id) {
+                      toggleCancellation(shift.id);
+                    } else if (shift.canBook) {
+                      toggleBooking(shift.shiftConfigId);
+                    } else {
+                      setToastConfig({ visible: true, message: "Can't create today's shift. You can only cancel an existing shift with a penalty.", duration: 3000 });
+                    }
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.shiftRowMain}>
+                    {/* Left Icon */}
+                    <View style={[styles.iconWrap, (isBooking || shift.isBooked) ? styles.iconWrapActive : {}]}>
+                      {getShiftIcon(shift.shiftCode, (isBooking || shift.isBooked) ? '#FFFFFF' : '#1D6BFC')}
+                    </View>
+
+                    {/* Middle Info */}
+                    <View style={styles.shiftInfo}>
+                      <Text style={[styles.shiftWindow, (isBooking || shift.isBooked) && { color: '#0F172A' }]}>
+                        {shift.shiftWindow}
+                      </Text>
+                      <Text style={styles.shiftName}>{shift.shiftName}</Text>
+                      <Text style={styles.shiftMeta}>
+                        <Text style={{ fontSize: 11 }}>🕓</Text> {durationDisplay}  •
+                        <Text style={{ color: demandColor, fontFamily: FONT_FAMILY.outfitBold }}> {shift.demandLevel || 'Normal'}</Text>
+                      </Text>
+                      {!shift.isBooked && shift.penaltyStatus === 'PENDING_DEDUCTION' && (
+                        <View style={styles.penaltyAppliedTag}>
+                          <Text style={styles.penaltyAppliedText}>Penalty Applied: ₹10 (Auto-deduction pending)</Text>
+                        </View>
+                      )}
+                    </View>
+
+                    {/* Right Area */}
+                    <View style={styles.shiftRight}>
+                      <Text style={styles.earning}>
+                        <Text style={{ fontSize: 12 }}>₹</Text>{shift.estimatedEarnings}
+                      </Text>
+                      <Text style={styles.estLabel}>Est. Earnings</Text>
+
+                      <View style={{ marginTop: 8, alignItems: 'flex-end' }}>
+                        {shift.isBooked ? (
+                          <View style={[styles.greenTick, { width: 24, height: 24, borderRadius: 12 }]}>
+                            <Check size={14} color="#FFF" strokeWidth={3} />
+                          </View>
+                        ) : shift.canBook ? (
+                          <View style={[styles.checkbox, isBooking && styles.checkboxActive]}>
+                            {isBooking && <Check size={12} color="#FFF" strokeWidth={3} />}
+                          </View>
+                        ) : (
+                          <View style={styles.checkboxDisabled} />
+                        )}
+                      </View>
+                    </View>
+                  </View>
+
+                  {shift.isBooked && (
+                    <View style={styles.shiftRowFooter}>
+                      <TouchableOpacity
+                        style={[styles.cancelBtn, isCancelling && styles.cancelBtnActive]}
+                        onPress={() => shift.id && toggleCancellation(shift.id)}
+                        activeOpacity={0.8}
+                      >
+                        {isCancelling ? (
+                          <Text style={styles.undoBtnText}>Undo</Text>
+                        ) : (
+                          <Text style={styles.cancelBtnText}>Cancel</Text>
+                        )}
+                      </TouchableOpacity>
                     </View>
                   )}
-                </View>
-
-                {/* Right Area */}
-                <View style={styles.shiftRight}>
-                  <Text style={styles.earning}>
-                    <Text style={{ fontSize: 12 }}>₹</Text>{shift.estimatedEarnings}
-                  </Text>
-                  <Text style={styles.estLabel}>Est. Earnings</Text>
-
-                  <View style={{ marginTop: 8, alignItems: 'flex-end' }}>
-                    {shift.isBooked ? (
-                      <View style={{ alignItems: 'flex-end' }}>
-                        <View style={[styles.greenTick, { width: 24, height: 24, borderRadius: 12, marginBottom: 8 }]}>
-                          <Check size={14} color="#FFF" strokeWidth={3} />
-                        </View>
-                        <TouchableOpacity
-                          style={[styles.cancelBtn, isCancelling && styles.cancelBtnActive]}
-                          onPress={() => shift.id && toggleCancellation(shift.id)}
-                          activeOpacity={0.8}
-                        >
-                          {isCancelling ? (
-                            <Text style={styles.undoBtnText}>Undo</Text>
-                          ) : (
-                            <Text style={styles.cancelBtnText}>Cancel</Text>
-                          )}
-                        </TouchableOpacity>
-                      </View>
-                    ) : shift.canBook ? (
-                      <View style={[styles.checkbox, isBooking && styles.checkboxActive]}>
-                        {isBooking && <Check size={12} color="#FFF" strokeWidth={3} />}
-                      </View>
-                    ) : (
-                      <View style={styles.checkboxDisabled} />
-                    )}
-                  </View>
-                </View>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      )}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
       </ScrollView>
 
       {/* Footer */}
@@ -395,7 +400,7 @@ const ShiftSelectionScreen: React.FC = () => {
         partnerId={partnerId}
         shiftId={selectedForCancellation.size > 0 ? Array.from(selectedForCancellation)[0] : null}
       />
-      
+
       <HowItWorksModal
         visible={showHowItWorks}
         onClose={() => setShowHowItWorks(false)}
@@ -489,7 +494,7 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
   },
   tabDateActive: { color: '#DBEAFE' },
-  
+
   calendarIconBox: {
     width: 44,
     height: 44,
@@ -537,11 +542,7 @@ const styles = StyleSheet.create({
   shiftRow: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    padding: 14,
     marginBottom: 12,
     borderWidth: 1,
     borderColor: '#E2E8F0',
@@ -550,6 +551,15 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 2,
+  },
+  shiftRowMain: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  shiftRowFooter: {
+    alignItems: 'flex-end',
+    marginTop: 8,
   },
   shiftRowSelected: {
     borderColor: '#F5A623',
@@ -564,7 +574,7 @@ const styles = StyleSheet.create({
     borderColor: '#F1F5F9',
     opacity: 0.6,
   },
-  
+
   iconWrap: {
     width: 44,
     height: 44,
@@ -577,7 +587,7 @@ const styles = StyleSheet.create({
   iconWrapActive: {
     backgroundColor: '#1D6BFC',
   },
-  
+
   shiftInfo: { flex: 1 },
   shiftWindow: {
     fontSize: 15,
@@ -624,7 +634,7 @@ const styles = StyleSheet.create({
     color: '#94A3B8',
     marginTop: 2,
   },
-  
+
   statusBadgeWrap: {
     flexDirection: 'row',
     alignItems: 'center',
