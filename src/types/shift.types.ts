@@ -1,50 +1,36 @@
-export type ShiftType = 'BREAKFAST' | 'LUNCH' | 'EVENING' | 'DINNER' | 'NIGHT';
-export type ShiftStatus = 'CONFIRMED' | 'CANCELLED';
+export type ShiftType = 'EARLY_MORNING' | 'BREAKFAST' | 'BRUNCH' | 'LUNCH' | 'AFTERNOON' | 'EVENING' | 'NIGHT';
+export type ShiftStatus = 'CONFIRMED' | 'CANCELLED' | 'AVAILABLE';
 
 export interface ShiftResponse {
-  id: string;
-  deliveryPartnerId: string;
-  shiftDate: string;
-  shiftType: ShiftType;
-  shiftWindow: string;
-  status: ShiftStatus;
+  id: string | null;           // null if not booked
+  shiftConfigId: string;       // Unique ID for the shift slot
+  shiftCode: string;           // Maps to ShiftType or similar
+  shiftName: string;           
+  shiftWindow: string;         
+  shiftDuration?: string;      // Expected from new API (fallback to durationText/totalShiftHours)
+  durationText?: string;
+  totalShiftHours?: string;
   estimatedEarnings: number;
-  createdAt: string;
+  demandLevel: string;         // 'High demand' | 'Medium demand' | 'Low demand'
+  isBooked: boolean;           // true if active confirmed booking exists
+  isLocked: boolean;           // true if today + booked (cannot cancel for free)
+  canBook: boolean;            // false if today (same-day booking disabled)
+  penaltyAmount: number;       // ₹10.00 for today cancels, ₹0.00 for tomorrow
+  penaltyStatus?: string;      // e.g., 'PENDING_DEDUCTION'
+  status?: ShiftStatus;        // fallback if needed
 }
 
-export interface ShiftBookingRequest {
-  shiftDate?: string;
-  shiftTypes: ShiftType[];
+export interface ShiftBookingBatchRequest {
+  shiftDate: string;
+  shiftConfigIds: string[];
 }
 
-export const SHIFT_WINDOWS: Record<ShiftType, string> = {
-  BREAKFAST: '06:00 AM – 10:00 AM',
-  LUNCH: '10:00 AM – 02:00 PM',
-  EVENING: '02:00 PM – 06:00 PM',
-  DINNER: '06:00 PM – 10:00 PM',
-  NIGHT: '10:00 PM – 02:00 AM',
-};
-
-export const SHIFT_EARNINGS: Record<ShiftType, number> = {
-  BREAKFAST: 250,
-  LUNCH: 300,
-  EVENING: 300,
-  DINNER: 350,
-  NIGHT: 200,
-};
-
-export const SHIFT_LABELS: Record<ShiftType, string> = {
+export const SHIFT_LABELS: Record<string, string> = {
+  EARLY_MORNING: 'Early Morning Shift',
   BREAKFAST: 'Breakfast Shift',
+  BRUNCH: 'Brunch Shift',
   LUNCH: 'Lunch Shift',
+  AFTERNOON: 'Afternoon Shift',
   EVENING: 'Evening Shift',
-  DINNER: 'Dinner Shift',
   NIGHT: 'Night Shift',
 };
-
-export const ALL_SHIFT_TYPES: ShiftType[] = [
-  'BREAKFAST',
-  'LUNCH',
-  'EVENING',
-  'DINNER',
-  'NIGHT',
-];
