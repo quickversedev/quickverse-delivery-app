@@ -2035,40 +2035,86 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
     }
   };
 
-  const renderStepper = () => (
-    <View style={s.stepper}>
-      {STEPS.map((step, i) => {
-        const done = i < config.stageIndex;
-        const active = i === Math.min(config.stageIndex, STEPS.length - 1);
-        return (
-          <React.Fragment key={step.label}>
-            <View style={s.stepperItem}>
-              <View
-                style={[
-                  s.stepperDot,
-                  done && s.stepperDotDone,
-                  active && s.stepperDotActive,
-                ]}
-              >
-                <Text style={s.stepperDotText}>{done ? '✓' : step.emoji}</Text>
+  const formatStepTime = (
+    timeValue: string | null | undefined,
+  ): string | null => {
+    if (!timeValue) return null;
+    const num = Number(timeValue);
+    const date =
+      Number.isFinite(num) && num > 0
+        ? new Date(num)
+        : new Date(
+            timeValue.includes(' ') ? timeValue.replace(' ', 'T') : timeValue,
+          );
+    if (isNaN(date.getTime())) return null;
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const renderStepper = () => {
+    // Map step timestamps dynamically based on DeliveryPartnerOrder fields
+    const stepTimestamps = [
+      formatStepTime(order.arrivedAtStoreAt), // Step 1: Reach Store
+      formatStepTime(order.pickedUpAt), // Step 2: Pickup
+      formatStepTime(order.reachedLocationAt), // Step 3: Search Destination
+      formatStepTime(order.deliveredAt ?? order.orderDetails?.completedDate), // Step 4: Deliver
+    ];
+
+    return (
+      <View style={s.stepper}>
+        {STEPS.map((step, i) => {
+          const done = i < config.stageIndex;
+          const active = i === Math.min(config.stageIndex, STEPS.length - 1);
+          const timestamp = stepTimestamps[i];
+
+          return (
+            <React.Fragment key={step.label}>
+              <View style={s.stepperItem}>
+                {/* 1. Icon / Dot */}
+                <View
+                  style={[
+                    s.stepperDot,
+                    done && s.stepperDotDone,
+                    active && s.stepperDotActive,
+                  ]}
+                >
+                  <Text style={s.stepperDotText}>
+                    {done ? '✓' : step.emoji}
+                  </Text>
+                </View>
+
+                {/* 2. Step Name */}
+                <Text
+                  style={[
+                    s.stepperLabel,
+                    (done || active) && s.stepperLabelActive,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {step.label}
+                </Text>
+
+                {/* 3. Timestamp */}
+                <Text
+                  style={[
+                    s.stepperTime,
+                    (done || active) && s.stepperTimeActive,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {timestamp || '--:--'}
+                </Text>
               </View>
-              <Text
-                style={[
-                  s.stepperLabel,
-                  (done || active) && s.stepperLabelActive,
-                ]}
-              >
-                {step.label}
-              </Text>
-            </View>
-            {i < STEPS.length - 1 && (
-              <View style={[s.stepperLine, done && s.stepperLineDone]} />
-            )}
-          </React.Fragment>
-        );
-      })}
-    </View>
-  );
+
+              {/* Connecting Line */}
+              {i < STEPS.length - 1 && (
+                <View style={[s.stepperLine, done && s.stepperLineDone]} />
+              )}
+            </React.Fragment>
+          );
+        })}
+      </View>
+    );
+  };
 
   const isCompleteDeliveryDisabled =
     config.apiAction === 'completeDelivery' &&
@@ -2636,17 +2682,17 @@ const s = StyleSheet.create({
     fontFamily: FONT_FAMILY.outfitRegular,
     color: '#64748B',
   },
-
   stepper: {
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
   },
-  stepperItem: { alignItems: 'center', gap: 3 },
+  stepperItem: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 3,
+  },
   stepperDot: {
     width: 34,
     height: 34,
@@ -2657,22 +2703,47 @@ const s = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#E2E8F0',
   },
-  stepperDotActive: { backgroundColor: '#EEF4FF', borderColor: '#0E6DFD' },
-  stepperDotDone: { backgroundColor: '#ECFDF5', borderColor: '#16A34A' },
-  stepperDotText: { fontSize: 13 },
+  stepperDotActive: {
+    backgroundColor: '#EEF4FF',
+    borderColor: '#0E6DFD',
+  },
+  stepperDotDone: {
+    backgroundColor: '#ECFDF5',
+    borderColor: '#16A34A',
+  },
+  stepperDotText: {
+    fontSize: 13,
+  },
   stepperLabel: {
     fontSize: 9,
     fontFamily: FONT_FAMILY.outfitRegular,
     color: '#94A3B8',
+    textAlign: 'center',
+    marginTop: 2,
   },
-  stepperLabelActive: { color: '#0F172A', fontFamily: FONT_FAMILY.outfitBold },
+  stepperLabelActive: {
+    color: '#0F172A',
+    fontFamily: FONT_FAMILY.outfitBold,
+  },
+  stepperTime: {
+    fontSize: 8,
+    fontFamily: FONT_FAMILY.outfitRegular,
+    color: '#CBD5E1',
+    textAlign: 'center',
+  },
+  stepperTimeActive: {
+    color: '#64748B',
+    fontFamily: FONT_FAMILY.outfitBold,
+  },
   stepperLine: {
     flex: 1,
     height: 2,
     backgroundColor: '#E2E8F0',
-    marginBottom: 18,
+    marginTop: 16, // Center-align line with the 34px circle
   },
-  stepperLineDone: { backgroundColor: '#16A34A' },
+  stepperLineDone: {
+    backgroundColor: '#16A34A',
+  },
 
   scroll: { flex: 1 },
   scrollContent: { gap: 10, paddingHorizontal: 14, paddingVertical: 12 },

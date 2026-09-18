@@ -758,8 +758,12 @@ export type DeliveryPartnerStats = {
   earnings: number;
   totalAssigned: number;
   acceptedCount: number;
-  acceptanceRate: number;
   topPerformingRiders: TopPerformingRider[];
+  acceptanceRate?: number;
+  hoursLiveTime?: number;
+  onTimeDeliveryRate?: number;
+  ordersCompletedCount?: number;
+  totalDistanceTravelled?: number;
 };
 
 const getDeliveryPartnerStats = async (

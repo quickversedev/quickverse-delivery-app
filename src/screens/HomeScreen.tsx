@@ -359,6 +359,16 @@ const NewOrderRequestCard: React.FC<NewOrderRequestCardProps> = ({
   const formatCurrencyLocal = (amount: number) =>
     `₹${Number.isFinite(amount) ? amount.toFixed(2) : '0.00'}`;
 
+  const formatStatusLabelLocal = (status: string) =>
+    status
+      .replace(/_/g, ' ')
+      .toLowerCase()
+      .replace(/\b\w/g, l => l.toUpperCase());
+
+  const rawState = order?.orderDetails?.state;
+  const isPending = rawState?.toUpperCase() === 'PENDING';
+  const formattedState = rawState ? formatStatusLabelLocal(rawState) : null;
+
   const itemCount = order.orderDetails?.totalItemCount ?? 0;
   const orderDescription =
     order.orderDetails?.orderDescription ||
@@ -440,9 +450,28 @@ const NewOrderRequestCard: React.FC<NewOrderRequestCardProps> = ({
         <Text style={styles.liveOrderCount}>
           {index + 1} of {totalOrders}
         </Text>
-        <Text style={styles.orderTag}>
-          {variant === 'live' ? 'Live Order' : 'New Order'}
-        </Text>
+        <View style={styles.orderTagsContainer}>
+          <Text style={styles.orderTag}>
+            {variant === 'live' ? 'Live Order' : 'New Order'}
+          </Text>
+          {formattedState && (
+            <View
+              style={[
+                styles.orderStateBadge,
+                isPending && styles.orderStateBadgePending,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.orderStateBadgeText,
+                  isPending && styles.orderStateBadgeTextPending,
+                ]}
+              >
+                {formattedState}
+              </Text>
+            </View>
+          )}
+        </View>
         <Text style={styles.liveTimeText}>{assignmentLabel}</Text>
       </View>
       <View style={styles.assignedOrderHeader}>
@@ -473,6 +502,15 @@ const NewOrderRequestCard: React.FC<NewOrderRequestCardProps> = ({
           <Text style={styles.assignedEarningsLabel}>Total Bill Amount</Text>
         </View>
       </View>
+
+      {/* PENDING VENDOR WARNING BANNER */}
+      {isPending && (
+        <View style={styles.pendingVendorWarning}>
+          <Text style={styles.pendingVendorWarningText}>
+            Waiting for vendor to accept this order
+          </Text>
+        </View>
+      )}
 
       <View style={styles.assignedCustomerRow}>
         <Text style={styles.assignedCustomerName} numberOfLines={1}>
@@ -808,6 +846,7 @@ const HomeScreen: React.FC = () => {
         partnerId,
         period,
       );
+      console.log('[Partner Stats] Fetched data:', data);
       setPartnerStats(data);
     } catch (error) {
       console.error('Fetch partner stats failed', error);
@@ -2118,8 +2157,11 @@ const HomeScreen: React.FC = () => {
   };
 
   const hasStats = partnerStats !== null;
-  const activeOrders = partnerStats?.orders;
+  const completedOrders = partnerStats?.ordersCompletedCount ?? 0;
+  const hoursLive = partnerStats?.hoursLiveTime ?? 0;
+  const onTimeDeliveryRate = partnerStats?.onTimeDeliveryRate ?? 0;
   const activeTotalAssigned = partnerStats?.totalAssigned;
+  const totalDistanceTravelled = partnerStats?.totalDistanceTravelled ?? 0;
 
   const DAILY_TARGET = 15;
   const XP_PER_ORDER = 5;
@@ -2318,7 +2360,7 @@ const HomeScreen: React.FC = () => {
                 <View style={styles.statsGrid}>
                   <StatCard
                     label="Orders Completed"
-                    value={hasStats ? activeOrders ?? '-' : 'N/A'}
+                    value={completedOrders}
                     icon={<CheckCircle2 size={18} color="#0E6DFD" />}
                     accentColor="#0E6DFD"
                     trend={
@@ -2329,7 +2371,7 @@ const HomeScreen: React.FC = () => {
                   />
                   <StatCard
                     label="On-time Rate"
-                    value="N/A"
+                    value={`${onTimeDeliveryRate.toFixed(0)}%`}
                     unit="Today"
                     icon={<CheckCircle2 size={18} color="#16A34A" />}
                     accentColor="#16A34A"
@@ -2337,7 +2379,7 @@ const HomeScreen: React.FC = () => {
                   />
                   <StatCard
                     label="Hours Live"
-                    value="N/A"
+                    value={hoursLive}
                     unit="Hours"
                     icon={<Clock3 size={18} color="#B45309" />}
                     accentColor="#F59E0B"
@@ -2345,7 +2387,7 @@ const HomeScreen: React.FC = () => {
                   />
                   <StatCard
                     label="Distance Travelled"
-                    value="N/A"
+                    value={totalDistanceTravelled}
                     unit="km"
                     icon={<Bike size={18} color="#EA580C" />}
                     accentColor="#EA580C"
@@ -3526,21 +3568,6 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#EEF2F7',
   },
-  orderMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-    paddingHorizontal: 2,
-  },
-  orderTag: {
-    flex: 1,
-    marginLeft: 8,
-    fontSize: 11,
-    fontFamily: FONT_FAMILY.outfitExtraBold,
-    color: '#0E6DFD',
-    textTransform: 'uppercase',
-  },
   assignedShopLogo: {
     width: 30,
     height: 30,
@@ -3682,6 +3709,65 @@ const styles = StyleSheet.create({
     marginRight: 6,
     fontFamily: FONT_FAMILY.outfitBold,
     color: '#64748B',
+  },
+  orderMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+    paddingHorizontal: 2,
+  },
+  orderTagsContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginLeft: 8,
+  },
+  orderTag: {
+    fontSize: 11,
+    fontFamily: FONT_FAMILY.outfitExtraBold,
+    color: '#0E6DFD',
+    textTransform: 'uppercase',
+  },
+  orderStateBadge: {
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  orderStateBadgePending: {
+    backgroundColor: '#FFF7ED',
+    borderColor: '#FFEDD5',
+  },
+  orderStateBadgeText: {
+    fontSize: 9,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#047857',
+    textTransform: 'uppercase',
+  },
+  orderStateBadgeTextPending: {
+    color: '#C2410C',
+  },
+  pendingVendorWarning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 9,
+    backgroundColor: '#FFF7ED',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#FFEDD5',
+  },
+  pendingVendorWarningText: {
+    fontSize: 11,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#C2410C',
+    flex: 1,
   },
   liveTimeBadge: {
     backgroundColor: '#F0F6FF',
