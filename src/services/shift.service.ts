@@ -1,7 +1,7 @@
 import axiosInstance, { apiCall } from './axios.config';
 import { TokenStorage } from '../utils/storage';
 import type {
-  ShiftBookingRequest,
+  ShiftBookingBatchRequest,
   ShiftResponse,
 } from '../types/shift.types';
 
@@ -13,18 +13,19 @@ const getHeaders = async () => {
   };
 };
 
-const bookShifts = async (
+const bookShiftsBatch = async (
   partnerId: string,
-  request: ShiftBookingRequest,
+  request: ShiftBookingBatchRequest,
 ): Promise<ShiftResponse[]> => {
   const headers = await getHeaders();
   const data = await apiCall<{ data: ShiftResponse[] }>(
     axiosInstance.post(
-      `/quickVerse/v3/rider/${partnerId}/shifts`,
+      `/quickVerse/v3/rider/${partnerId}/shifts/batch`,
       request,
       { headers },
     ),
   );
+  console.log('Book Shifts Response:', data);
   return data?.data ?? [];
 };
 
@@ -33,27 +34,35 @@ const getShifts = async (
   date?: string,
 ): Promise<ShiftResponse[]> => {
   const headers = await getHeaders();
-  const data = await apiCall<{ data: ShiftResponse[] }>(
+  const data = await apiCall<any>(
     axiosInstance.get(`/quickVerse/v3/rider/${partnerId}/shifts`, {
       headers,
       params: date ? { date } : {},
       validateStatus: s => s < 500,
     }),
   );
-  return data?.data ?? [];
+  
+  console.log(`Shift API Response for ${date}:`, data);
+
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.data)) return data.data;
+  if (Array.isArray(data?.data?.shifts)) return data.data.shifts;
+  return [];
 };
 
 const cancelShift = async (
   partnerId: string,
   shiftId: string,
-): Promise<void> => {
+): Promise<any> => {
   const headers = await getHeaders();
-  await apiCall(
+  const res = await apiCall<{ data: any }>(
     axiosInstance.delete(
       `/quickVerse/v3/rider/${partnerId}/shifts/${shiftId}`,
       { headers, validateStatus: s => s < 500 },
     ),
   );
+  console.log('Cancel Shift Response:', res);
+  return res;
 };
 
 const getActiveShift = async (
@@ -70,7 +79,7 @@ const getActiveShift = async (
 };
 
 const shiftService = {
-  bookShifts,
+  bookShiftsBatch,
   getShifts,
   cancelShift,
   getActiveShift,

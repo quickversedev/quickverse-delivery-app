@@ -16,6 +16,9 @@ import {
   ShiftSelectionScreen,
   MyShiftsScreen,
   LiveOrderPoolScreen,
+  SupportScreen,
+  ReferAndEarnScreen,
+  OrderHistoryScreen,
 } from '../screens';
 import LoadingScreen from '../components/LoadingScreen';
 import useAuthStore from '../hooks/useAuthStore';
@@ -45,6 +48,9 @@ export type RootStackParamList = {
   OrderDelivery: { order: DeliveryPartnerOrder };
   ShiftSelection: undefined;
   MyShifts: { shifts: ShiftResponse[] };
+  Support: undefined;
+  ReferAndEarn: undefined;
+  OrderHistory: undefined;
 };
 
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
@@ -129,6 +135,9 @@ const MainAppNavigator: React.FC = () => (
     <RootStack.Screen name="OrderDelivery" component={OrderDeliveryScreen} />
     <RootStack.Screen name="ShiftSelection" component={ShiftSelectionScreen} />
     <RootStack.Screen name="MyShifts" component={MyShiftsScreen} />
+    <RootStack.Screen name="Support" component={SupportScreen} />
+    <RootStack.Screen name="ReferAndEarn" component={ReferAndEarnScreen} />
+    <RootStack.Screen name="OrderHistory" component={OrderHistoryScreen} />
   </RootStack.Navigator>
 );
 

@@ -12,6 +12,9 @@ import LocationPermissionScreen from './LocationPermissionScreen';
 import ShiftSelectionScreen from './ShiftSelectionScreen';
 import MyShiftsScreen from './MyShiftsScreen';
 import LiveOrderPoolScreen from './LiveOrderPoolScreen';
+import SupportScreen from './SupportScreen';
+import ReferAndEarnScreen from './ReferAndEarnScreen';
+import OrderHistoryScreen from './OrderHistoryScreen';
 
 export {
   HomeScreen,
@@ -28,4 +31,7 @@ export {
   ShiftSelectionScreen,
   MyShiftsScreen,
   LiveOrderPoolScreen,
+  SupportScreen,
+  ReferAndEarnScreen,
+  OrderHistoryScreen,
 };

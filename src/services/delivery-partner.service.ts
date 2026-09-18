@@ -11,6 +11,14 @@ export type DeliveryPartnerProfile = {
   earnings: number | null;
   isOnline?: boolean;
   isActive?: boolean;
+  mobileNumber?: string | null;
+  isVerified?: boolean;
+  rating?: number;
+  acceptanceRate?: number;
+};
+
+export type NotificationSettings = {
+  liveOrderPoolNotifications: boolean;
 };
 
 type OrderFinance = {
@@ -243,6 +251,10 @@ type DeliveryPartnerApiResponse = {
     isOnline?: boolean;
     isActive?: boolean;
     active?: boolean;
+    mobileNumber?: string | number;
+    isVerified?: boolean;
+    rating?: number;
+    acceptanceRate?: number;
   };
   id?: string;
   deliveryPartnerId?: string;
@@ -262,6 +274,10 @@ type DeliveryPartnerApiResponse = {
   orderFailed?: number;
   earnings?: number;
   totalEarnings?: number;
+  mobileNumber?: string | number;
+  isVerified?: boolean;
+  rating?: number;
+  acceptanceRate?: number;
 };
 
 const normalizePartnerProfile = (
@@ -295,6 +311,10 @@ const normalizePartnerProfile = (
         : null,
     isOnline: Boolean(payload?.isOnline ?? false),
     isActive: typeof payload?.isActive === 'boolean' ? payload.isActive : typeof payload?.active === 'boolean' ? payload.active : undefined,
+    mobileNumber: payload?.mobileNumber ? String(payload.mobileNumber) : null,
+    isVerified: Boolean(payload?.isVerified ?? false),
+    rating: Number(payload?.rating ?? 0),
+    acceptanceRate: Number(payload?.acceptanceRate ?? 0),
   };
 };
 
@@ -333,6 +353,42 @@ const toggleDeliveryPartnerOnlineStatus = async (
       },
       validateStatus: status => status >= 200 && status < 400,
     }),
+  );
+};
+
+const getNotificationSettings = async (
+  partnerId: string,
+): Promise<NotificationSettings> => {
+  const sessionKey = await TokenStorage.getToken();
+  const data = await apiCall<NotificationSettings>(
+    axiosInstance.get(`/v1/delivery-partner/${partnerId}/notification-settings`, {
+      validateStatus: status => status >= 200 && status < 400,
+      headers: {
+        SessionKey: sessionKey || '',
+        'Request-Origin': 'TRANSPORTER',
+      },
+    }),
+  );
+  return data;
+};
+
+const updateNotificationSettings = async (
+  partnerId: string,
+  settings: Partial<NotificationSettings>,
+): Promise<void> => {
+  const sessionKey = await TokenStorage.getToken();
+  await apiCall(
+    axiosInstance.patch(
+      `/v1/delivery-partner/${partnerId}/notification-settings`,
+      settings,
+      {
+        headers: {
+          SessionKey: sessionKey || '',
+          'Request-Origin': 'TRANSPORTER',
+        },
+        validateStatus: status => status >= 200 && status < 400,
+      }
+    )
   );
 };
 
@@ -621,8 +677,6 @@ const getAssignedOrdersByPartnerId = async (
       validateStatus: status => status >= 200 && status < 400,
     }),
   );
-
-  console.log("Raw Orders : ", data?.content);
 
   if (Array.isArray(data?.content))
     return data.content.map(normalizePartnerOrder);
@@ -929,6 +983,34 @@ const completeDelivery = async (
   );
 };
 
+const getDeliveryPartnerHistory = async (
+  partnerId: string,
+  page = 0,
+  size = 10,
+  fromDate?: string,
+  toDate?: string,
+): Promise<any> => {
+  const sessionKey = await TokenStorage.getToken();
+  const params = new URLSearchParams({
+    page: String(page),
+    size: String(size),
+  });
+
+  if (fromDate) params.append('fromDate', fromDate);
+  if (toDate) params.append('toDate', toDate);
+
+  const response = await apiCall<any>(
+    axiosInstance.get(`/v1/order-master/delivery-partner/${partnerId}?${params.toString()}`, {
+      headers: {
+        SessionKey: sessionKey || '',
+        'Request-Origin': 'CAPTAIN',
+      },
+      validateStatus: status => status >= 200 && status < 400,
+    }),
+  );
+  return response.data;
+};
+
 const deliveryPartnerService = {
   generatePaymentQr,
   getPaymentQrStatus,
@@ -946,6 +1028,10 @@ const deliveryPartnerService = {
   pickupOrder,
   arriveAtDestination,
   completeDelivery,
+  getNotificationSettings,
+  updateNotificationSettings,
+  getDeliveryPartnerHistory,
 };
 
 export default deliveryPartnerService;
+
