@@ -5,21 +5,34 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Home, Wallet, User, Zap, CalendarDays } from 'lucide-react-native';
-import {
-  LoginScreen,
-  OTPScreen,
-  OrderDeliveryScreen,
-  OrderWebViewScreen,
-  ProfileScreen,
-  HomeScreen,
-  EarningsScreen,
-  ShiftSelectionScreen,
-  MyShiftsScreen,
-  LiveOrderPoolScreen,
-  SupportScreen,
-  ReferAndEarnScreen,
-  OrderHistoryScreen,
-} from '../screens';
+// import {
+//   LoginScreen,
+//   OTPScreen,
+//   OrderDeliveryScreen,
+//   OrderWebViewScreen,
+//   ProfileScreen,
+//   HomeScreen,
+//   EarningsScreen,
+//   ShiftSelectionScreen,
+//   MyShiftsScreen,
+//   LiveOrderPoolScreen,
+//   SupportScreen,
+//   ReferAndEarnScreen,
+//   OrderHistoryScreen,
+// } from '../screens';
+import LoginScreen from '../screens/LoginScreen';
+import OTPScreen from '../screens/OTPScreen';
+import OrderDeliveryScreen from '../screens/OrderDeliveryScreen';
+import OrderWebViewScreen from '../screens/OrderWebViewScreen';
+import ProfileScreen from '../screens/ProfileScreen';
+import HomeScreen from '../screens/HomeScreen';
+import EarningsScreen from '../screens/EarningsScreen';
+import ShiftSelectionScreen from '../screens/ShiftSelectionScreen';
+import MyShiftsScreen from '../screens/MyShiftsScreen';
+import LiveOrderPoolScreen from '../screens/LiveOrderPoolScreen';
+import SupportScreen from '../screens/SupportScreen';
+import ReferAndEarnScreen from '../screens/ReferAndEarnScreen';
+import OrderHistoryScreen from '../screens/OrderHistoryScreen';
 import LoadingScreen from '../components/LoadingScreen';
 import useAuthStore from '../hooks/useAuthStore';
 import { rehydrateAuthStore } from '../store/authStore';
@@ -79,7 +92,8 @@ const TAB_LABELS: Record<keyof MainTabParamList, string> = {
 const LoginNavigator: React.FC = () => (
   <AuthStack.Navigator
     initialRouteName="Login"
-    screenOptions={{ headerShown: false }}>
+    screenOptions={{ headerShown: false }}
+  >
     <AuthStack.Screen name="Login" component={LoginScreen} />
     <AuthStack.Screen name="OTP" component={OTPScreen} />
   </AuthStack.Navigator>
@@ -118,7 +132,8 @@ const MainTabNavigator: React.FC = () => {
             paddingBottom: bottomInset,
           },
         ],
-      })}>
+      })}
+    >
       <Tab.Screen name="HomeTab" component={HomeScreen} />
       <Tab.Screen name="PoolTab" component={LiveOrderPoolScreen} />
       <Tab.Screen name="ShiftsTab" component={ShiftSelectionScreen} />
