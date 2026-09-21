@@ -114,15 +114,24 @@ const formatTimeLabel = (minutes: number | null): string => {
   return `${minutes} min${minutes !== 1 ? 's' : ''}`;
 };
 
-const formatDetailedTime = (minutes: number | null): string => {
-  if (minutes === null) return 'N/A';
-  if (minutes < 60) {
-    return `${minutes} min${minutes !== 1 ? 's' : ''}`;
-  }
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
-  if (mins === 0) return `${hours} hr${hours !== 1 ? '' : ''}`;
-  return `${hours} hr ${mins} min${mins !== 1 ? 's' : ''}`;
+const formatEstimateCountdown = (
+  estimatedMinutes: number | null,
+  elapsedMs: number,
+): string => {
+  if (estimatedMinutes === null) return 'Calculating...';
+  const remainingSeconds = Math.max(
+    0,
+    Math.ceil(estimatedMinutes * 60 - elapsedMs / 1000),
+  );
+  const hours = Math.floor(remainingSeconds / 3600);
+  const minutes = Math.floor((remainingSeconds % 3600) / 60);
+  const seconds = remainingSeconds % 60;
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(
+        2,
+        '0',
+      )}`
+    : `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 };
 
 const STAGE_CONFIG: Record<string, StageConfig> = {
@@ -601,6 +610,7 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
   const [qrImageRetryKey, setQrImageRetryKey] = useState(0);
   const pollingIntervalRef = useRef<any>(null);
   const componentMountedRef = useRef(true);
+  const reachStoreTimerStartedAtRef = useRef(Date.now());
 
   const { getPricingValues } = usePricingStore();
 
@@ -756,6 +766,18 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
     pickupEstimatedMinutes != null && dropEstimatedMinutes != null
       ? PREPARATION_TIME_MINUTES + pickupEstimatedMinutes + dropEstimatedMinutes
       : null;
+  const reachStoreTotalEstimatedMinutes =
+    pickupEstimatedMinutes != null
+      ? PREPARATION_TIME_MINUTES + pickupEstimatedMinutes
+      : null;
+  const reachStoreElapsedMs = Math.max(
+    0,
+    now - reachStoreTimerStartedAtRef.current,
+  );
+  const reachStoreTotalCountdownLabel = formatEstimateCountdown(
+    reachStoreTotalEstimatedMinutes,
+    reachStoreElapsedMs,
+  );
 
   const displayDistance = (distance: number | null) =>
     distance == null ? 'N/A' : `${distance.toFixed(1)} km`;
@@ -1816,14 +1838,14 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
         <TimeEstimateChip
           icon={<Clock size={14} color="#64748B" />}
           label="Pickup ETA"
-          time={formatTimeLabel(pickupEstimatedMinutes)}
-          subLabel="@ 20 km/h"
+          time="3 min"
+          subLabel="Estimated"
         />
         <TimeEstimateChip
           icon={<Clock size={14} color="#64748B" />}
           label="Total Time"
-          time={formatDetailedTime(totalEstimatedMinutes)}
-          subLabel="Prep + Delivery"
+          time={reachStoreTotalCountdownLabel}
+          subLabel="Time remaining"
         />
       </View>
 
