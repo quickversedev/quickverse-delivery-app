@@ -11,19 +11,17 @@ import {
   Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import {
-  ArrowLeft,
-  Gift,
-  Copy,
-  Share2,
-} from 'lucide-react-native';
+import { ArrowLeft, Gift, Copy, Share2 } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import Clipboard from '@react-native-clipboard/clipboard';
+// import Clipboard from '@react-native-clipboard/clipboard';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import { FONT_FAMILY } from '../theme/typography';
 
-type ReferAndEarnScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'ReferAndEarn'>;
+type ReferAndEarnScreenNavigationProp = NativeStackNavigationProp<
+  RootStackParamList,
+  'ReferAndEarn'
+>;
 
 const APP_PLAY_STORE_LINK = 'market://details?id=com.qvtransportersappui';
 const REFERRAL_CODE = 'CAPTAIN100'; // Hardcoded for now based on the image
@@ -33,7 +31,7 @@ const ReferAndEarnScreen: React.FC = () => {
   const navigation = useNavigation<ReferAndEarnScreenNavigationProp>();
 
   const handleCopyCode = () => {
-    Clipboard.setString(REFERRAL_CODE);
+    // Clipboard.setString(REFERRAL_CODE);
     if (Platform.OS === 'android') {
       ToastAndroid.show('Copied to clipboard', ToastAndroid.SHORT);
     } else {
@@ -42,8 +40,8 @@ const ReferAndEarnScreen: React.FC = () => {
   };
 
   const handleShareLink = () => {
-    Linking.openURL(APP_PLAY_STORE_LINK).catch((err) =>
-      console.error('Error opening Play Store', err)
+    Linking.openURL(APP_PLAY_STORE_LINK).catch(err =>
+      console.error('Error opening Play Store', err),
     );
   };
 
@@ -51,7 +49,10 @@ const ReferAndEarnScreen: React.FC = () => {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.iconButton}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.iconButton}
+        >
           <ArrowLeft size={24} color="#1E293B" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Refer & Earn</Text>
@@ -67,9 +68,12 @@ const ReferAndEarnScreen: React.FC = () => {
           <View style={styles.giftCircle}>
             <Gift size={48} color="#1D6BFC" strokeWidth={1.5} />
           </View>
-          <Text style={styles.heroTitle}>Earn ₹100 for every Captain you bring on board!</Text>
+          <Text style={styles.heroTitle}>
+            Earn ₹100 for every Captain you bring on board!
+          </Text>
           <Text style={styles.heroSubtitle}>
-            Get rewarded when your referred friend completes 1 month of active deliveries.
+            Get rewarded when your referred friend completes 1 month of active
+            deliveries.
           </Text>
         </View>
 
@@ -78,7 +82,11 @@ const ReferAndEarnScreen: React.FC = () => {
           <Text style={styles.codeCardTitle}>Your Unique Referral Code</Text>
           <View style={styles.codeBox}>
             <Text style={styles.codeText}>{REFERRAL_CODE}</Text>
-            <TouchableOpacity style={styles.copyBtn} onPress={handleCopyCode} activeOpacity={0.7}>
+            <TouchableOpacity
+              style={styles.copyBtn}
+              onPress={handleCopyCode}
+              activeOpacity={0.7}
+            >
               <Copy size={16} color="#1D6BFC" />
               <Text style={styles.copyText}>COPY</Text>
             </TouchableOpacity>
@@ -86,7 +94,11 @@ const ReferAndEarnScreen: React.FC = () => {
         </View>
 
         {/* Share Button */}
-        <TouchableOpacity style={styles.shareBtn} onPress={handleShareLink} activeOpacity={0.8}>
+        <TouchableOpacity
+          style={styles.shareBtn}
+          onPress={handleShareLink}
+          activeOpacity={0.8}
+        >
           <Share2 size={20} color="#FFFFFF" style={styles.shareIcon} />
           <Text style={styles.shareBtnText}>Share Referral Link</Text>
         </TouchableOpacity>
@@ -95,7 +107,7 @@ const ReferAndEarnScreen: React.FC = () => {
         <View style={styles.howItWorksCard}>
           <Text style={styles.howItWorksTitle}>How it works</Text>
           <View style={styles.howItWorksDivider} />
-          
+
           <View style={styles.stepRow}>
             <View style={styles.stepCircle}>
               <Text style={styles.stepNumber}>1</Text>
@@ -103,7 +115,8 @@ const ReferAndEarnScreen: React.FC = () => {
             <View style={styles.stepTextWrap}>
               <Text style={styles.stepTitle}>Share your code</Text>
               <Text style={styles.stepSubtitle}>
-                Send your unique code or link to your friends via WhatsApp, SMS, or any other app.
+                Send your unique code or link to your friends via WhatsApp, SMS,
+                or any other app.
               </Text>
             </View>
           </View>
@@ -115,7 +128,8 @@ const ReferAndEarnScreen: React.FC = () => {
             <View style={styles.stepTextWrap}>
               <Text style={styles.stepTitle}>They join as a Captain</Text>
               <Text style={styles.stepSubtitle}>
-                Your friend signs up using your code and completes their onboarding.
+                Your friend signs up using your code and completes their
+                onboarding.
               </Text>
             </View>
           </View>
@@ -131,7 +145,6 @@ const ReferAndEarnScreen: React.FC = () => {
               </Text>
             </View>
           </View>
-
         </View>
       </ScrollView>
     </View>

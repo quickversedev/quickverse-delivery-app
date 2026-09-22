@@ -72,6 +72,7 @@ interface StageConfig {
   buttonLabel: string;
   buttonColor: string;
   apiAction:
+    | 'acceptOrder'
     | 'arriveStore'
     | 'pickup'
     | 'arriveDestination'
@@ -113,15 +114,24 @@ const formatTimeLabel = (minutes: number | null): string => {
   return `${minutes} min${minutes !== 1 ? 's' : ''}`;
 };
 
-const formatDetailedTime = (minutes: number | null): string => {
-  if (minutes === null) return 'N/A';
-  if (minutes < 60) {
-    return `${minutes} min${minutes !== 1 ? 's' : ''}`;
-  }
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
-  if (mins === 0) return `${hours} hr${hours !== 1 ? '' : ''}`;
-  return `${hours} hr ${mins} min${mins !== 1 ? 's' : ''}`;
+const formatEstimateCountdown = (
+  estimatedMinutes: number | null,
+  elapsedMs: number,
+): string => {
+  if (estimatedMinutes === null) return 'Calculating...';
+  const remainingSeconds = Math.max(
+    0,
+    Math.ceil(estimatedMinutes * 60 - elapsedMs / 1000),
+  );
+  const hours = Math.floor(remainingSeconds / 3600);
+  const minutes = Math.floor((remainingSeconds % 3600) / 60);
+  const seconds = remainingSeconds % 60;
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(
+        2,
+        '0',
+      )}`
+    : `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 };
 
 const STAGE_CONFIG: Record<string, StageConfig> = {
@@ -133,9 +143,9 @@ const STAGE_CONFIG: Record<string, StageConfig> = {
   },
   PARTNER_ASSIGNED: {
     stageIndex: 0,
-    buttonLabel: 'Mark Arrived at Store',
+    buttonLabel: 'Accept Order',
     buttonColor: '#0E6DFD',
-    apiAction: 'arriveStore',
+    apiAction: 'acceptOrder',
   },
   ARRIVED_AT_STORE: {
     stageIndex: 1,
@@ -385,6 +395,23 @@ const toFiniteNumber = (value: unknown): number | null => {
   return Number.isFinite(numericValue) ? numericValue : null;
 };
 
+const parseTimestampValue = (
+  value: string | number | null | undefined,
+): number | null => {
+  if (value === null || value === undefined || value === '') return null;
+  const numericValue = Number(value);
+  if (Number.isFinite(numericValue) && numericValue > 0) {
+    return numericValue > 10_000_000_000
+      ? numericValue
+      : numericValue > 1_000_000_000
+      ? numericValue * 1000
+      : null;
+  }
+  const normalized = String(value).replace(' ', 'T');
+  const parsed = new Date(normalized);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.getTime();
+};
+
 const fitRegion = (coords: CoordinateData[]): Region | null => {
   const valid = coords.filter(
     c => Number.isFinite(c.lat) && Number.isFinite(c.lng),
@@ -540,6 +567,8 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
   const { order: initialOrder } = route.params;
   const [order, setOrder] = useState<DeliveryPartnerOrder>(initialOrder);
   const [isLoading, setIsLoading] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  const [customerRating, setCustomerRating] = useState(0);
   const [paymentMode, setPaymentMode] = useState<'ONLINE' | 'CASH' | null>(
     'CASH',
   );
@@ -581,6 +610,7 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
   const [qrImageRetryKey, setQrImageRetryKey] = useState(0);
   const pollingIntervalRef = useRef<any>(null);
   const componentMountedRef = useRef(true);
+  const reachStoreTimerStartedAtRef = useRef(Date.now());
 
   const { getPricingValues } = usePricingStore();
 
@@ -631,6 +661,11 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
   }, []);
 
   useEffect(() => {
+    const timerId = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timerId);
+  }, []);
+
+  useEffect(() => {
     return () => {
       componentMountedRef.current = false;
       if (pollingIntervalRef.current) {
@@ -638,6 +673,9 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
       }
     };
   }, []);
+
+  const rawState = order?.orderDetails?.state;
+  const isPending = rawState?.toUpperCase() === 'PENDING';
 
   const orderStatus = (
     order.orderStatus ??
@@ -728,6 +766,18 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
     pickupEstimatedMinutes != null && dropEstimatedMinutes != null
       ? PREPARATION_TIME_MINUTES + pickupEstimatedMinutes + dropEstimatedMinutes
       : null;
+  const reachStoreTotalEstimatedMinutes =
+    pickupEstimatedMinutes != null
+      ? PREPARATION_TIME_MINUTES + pickupEstimatedMinutes
+      : null;
+  const reachStoreElapsedMs = Math.max(
+    0,
+    now - reachStoreTimerStartedAtRef.current,
+  );
+  const reachStoreTotalCountdownLabel = formatEstimateCountdown(
+    reachStoreTotalEstimatedMinutes,
+    reachStoreElapsedMs,
+  );
 
   const displayDistance = (distance: number | null) =>
     distance == null ? 'N/A' : `${distance.toFixed(1)} km`;
@@ -785,10 +835,8 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
       ? 'N/A'
       : assignmentAge < 1
       ? 'Just now'
-      : `${assignmentAge} min${assignmentAge === 1 ? '' : 's'} away`;
-  const assignmentElapsedMs = orderCreatedAt
-    ? Date.now() - orderCreatedAt
-    : null;
+      : `${assignmentAge} min${assignmentAge === 1 ? '' : 's'}`;
+  const assignmentElapsedMs = orderCreatedAt ? now - orderCreatedAt : null;
   const expiryRemainingSeconds =
     assignmentElapsedMs != null
       ? Math.max(0, Math.ceil((150000 - assignmentElapsedMs) / 1000))
@@ -799,6 +847,35 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
         ? `Expires in ${expiryRemainingSeconds}s`
         : 'Assignment window expired'
       : assignmentAgeLabel;
+
+  const stageStartedAt =
+    orderStatus === 'PARTNER_ASSIGNED'
+      ? orderCreatedAt
+      : orderStatus === 'ACCEPTED'
+      ? parseTimestampValue(order.assignedAt)
+      : orderStatus === 'ARRIVED_AT_STORE'
+      ? parseTimestampValue(order.arrivedAtStoreAt)
+      : orderStatus === 'ORDER_PICKED_UP'
+      ? parseTimestampValue(order.pickedUpAt)
+      : parseTimestampValue(order.reachedLocationAt);
+  const pickupDeadlineSeconds = stageStartedAt
+    ? Math.max(0, Math.ceil((30 * 60000 - (now - stageStartedAt)) / 1000))
+    : null;
+  const deliveryDeadlineSeconds = stageStartedAt
+    ? Math.max(0, Math.ceil((45 * 60000 - (now - stageStartedAt)) / 1000))
+    : null;
+  const formatCountdown = (seconds: number | null): string => {
+    if (seconds == null) return '--:--';
+    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(
+      2,
+      '0',
+    )}`;
+  };
+  const estimatedEarnings =
+    toFiniteNumber(order.finance?.actualDeliveryFee) ??
+    toFiniteNumber(order.finance?.deliveryFee) ??
+    toFiniteNumber(order.finance?.payableAmount) ??
+    0;
 
   const serviceType: ServiceType = order.shopDetails?.category
     ?.toLowerCase()
@@ -1357,7 +1434,12 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
     const orderId = order.id;
     setIsLoading(true);
     try {
-      if (config.apiAction === 'arriveStore') {
+      if (config.apiAction === 'acceptOrder') {
+        await deliveryPartnerService.acceptOrder(orderId);
+        if (componentMountedRef.current) {
+          setOrder(prev => ({ ...prev, orderStatus: 'ACCEPTED' }));
+        }
+      } else if (config.apiAction === 'arriveStore') {
         await deliveryPartnerService.arriveAtStore(orderId);
         if (componentMountedRef.current) {
           setOrder(prev => ({ ...prev, orderStatus: 'ARRIVED_AT_STORE' }));
@@ -1661,6 +1743,78 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
     );
   };
 
+  const renderOperationalStatus = () => {
+    if (orderStatus === 'PARTNER_ASSIGNED') {
+      return (
+        <View style={[s.operationCard, s.operationCardBlue]}>
+          <View style={s.operationIcon}>
+            <Clock size={17} color="#0E6DFD" />
+          </View>
+          <View style={s.operationContent}>
+            <Text style={s.operationTitle}>Live order request</Text>
+            <Text style={s.operationSub}>
+              Accept before the assignment window expires
+            </Text>
+          </View>
+          <Text style={s.operationTimer}>
+            {formatCountdown(expiryRemainingSeconds)}
+          </Text>
+        </View>
+      );
+    }
+
+    if (orderStatus === 'ARRIVED_AT_STORE') {
+      return (
+        <View style={[s.operationCard, s.operationCardAmber]}>
+          <View style={s.operationIcon}>
+            <Clock size={17} color="#B45309" />
+          </View>
+          <View style={s.operationContent}>
+            <Text style={s.operationTitle}>Pickup timer</Text>
+            <Text style={s.operationSub}>Target pickup within 30 minutes</Text>
+          </View>
+          <Text style={[s.operationTimer, { color: '#B45309' }]}>
+            {formatCountdown(pickupDeadlineSeconds)}
+          </Text>
+          <TouchableOpacity
+            style={s.operationAction}
+            onPress={() =>
+              Alert.alert(
+                'Order not ready',
+                'Ask the store to finish preparing the order, then mark it picked up when it is ready.',
+              )
+            }
+            activeOpacity={0.85}
+          >
+            <AlertTriangle size={12} color="#B45309" />
+            <Text style={s.operationActionText}>Not ready</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    if (orderStatus === 'ORDER_PICKED_UP') {
+      return (
+        <View style={[s.operationCard, s.operationCardRed]}>
+          <View style={s.operationIcon}>
+            <Clock size={17} color="#DC2626" />
+          </View>
+          <View style={s.operationContent}>
+            <Text style={s.operationTitle}>Delivery deadline</Text>
+            <Text style={s.operationSub}>
+              Keep the customer updated on your way
+            </Text>
+          </View>
+          <Text style={[s.operationTimer, { color: '#DC2626' }]}>
+            {formatCountdown(deliveryDeadlineSeconds)}
+          </Text>
+        </View>
+      );
+    }
+
+    return null;
+  };
+
   const renderStep0 = () => (
     <>
       <MapWithMarkers
@@ -1684,14 +1838,14 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
         <TimeEstimateChip
           icon={<Clock size={14} color="#64748B" />}
           label="Pickup ETA"
-          time={formatTimeLabel(pickupEstimatedMinutes)}
-          subLabel="@ 20 km/h"
+          time="3 min"
+          subLabel="Estimated"
         />
         <TimeEstimateChip
           icon={<Clock size={14} color="#64748B" />}
           label="Total Time"
-          time={formatDetailedTime(totalEstimatedMinutes)}
-          subLabel="Prep + Delivery"
+          time={reachStoreTotalCountdownLabel}
+          subLabel="Time remaining"
         />
       </View>
 
@@ -2028,6 +2182,30 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
                 {formatCurrency(order?.finance?.payableAmount || computedTotal)}
               </Text>
             </View>
+
+            <View style={s.ratingBlock}>
+              <Text style={s.ratingTitle}>Rate Customer</Text>
+              <Text style={s.ratingSub}>How was your delivery experience?</Text>
+              <View style={s.ratingStars}>
+                {[1, 2, 3, 4, 5].map(star => (
+                  <TouchableOpacity
+                    key={star}
+                    onPress={() => setCustomerRating(star)}
+                    activeOpacity={0.8}
+                    accessibilityLabel={`${star} star rating`}
+                  >
+                    <Text
+                      style={[
+                        s.ratingStar,
+                        star <= customerRating && s.ratingStarActive,
+                      ]}
+                    >
+                      ★
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
           </View>
         );
       default:
@@ -2133,59 +2311,87 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
 
   return (
     <SafeAreaView style={s.container} edges={['top', 'left', 'right']}>
-      <View style={s.header}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={s.backBtn}
-          activeOpacity={0.8}
-        >
-          <ArrowLeft size={20} color="#0F172A" />
-        </TouchableOpacity>
-        <Text style={s.headerTitle}>Order #{order.orderId || order.id}</Text>
-        <View style={{ width: 36 }} />
-      </View>
-
-      <View style={s.orderSummaryCard}>
-        <View style={s.orderSummaryMetrics}>
-          <View style={s.metric}>
-            <Text style={s.metricValue}>
-              {formatCurrency(totalBillAmount ?? computedTotal)}
-            </Text>
-            <Text style={s.metricLabel}>Total Bill</Text>
-          </View>
-          <View style={s.metricDivider} />
-          <View style={s.metric}>
-            <Text style={s.metricValue}>{pickupDistanceLabel}</Text>
-            <Text style={s.metricLabel}>Pickup</Text>
-          </View>
-          <View style={s.metricDivider} />
-          <View style={s.metric}>
-            <Text style={s.metricValue}>{displayDistance(dropDistance)}</Text>
-            <Text style={s.metricLabel}>Drop</Text>
-          </View>
-          <View style={s.metricDivider} />
-          <View style={s.metric}>
-            <Text style={s.metricValue}>{totalDistanceLabel}</Text>
-            <Text style={s.metricLabel}>Total Dist</Text>
-          </View>
-        </View>
-
-        <View style={s.orderSummaryStatusRow}>
-          <Text style={s.statusBadge}>{finalPaymentMethod || 'N/A'}</Text>
-          <Text style={s.statusTime}>{assignmentAgeLabel}</Text>
-          <Text style={s.statusTime}>{orderSummaryTimeLabel}</Text>
-        </View>
-      </View>
-
-      {renderStepper()}
-
       <ScrollView
         style={s.scroll}
-        contentContainerStyle={s.scrollContent}
+        contentContainerStyle={s.pageScrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {renderContent()}
-        <View style={{ height: 100 }} />
+        <View style={s.header}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={s.backBtn}
+            activeOpacity={0.8}
+          >
+            <ArrowLeft size={20} color="#0F172A" />
+          </TouchableOpacity>
+          <Text style={s.headerTitle}>Order #{order.orderId || order.id}</Text>
+          <View style={{ width: 36 }} />
+        </View>
+
+        {isPending && (
+          <View style={s.pendingVendorWarning}>
+            <Text style={s.pendingVendorWarningText}>
+              Waiting for vendor to accept this order
+            </Text>
+          </View>
+        )}
+
+        <View style={s.orderSummaryCard}>
+          <View style={s.orderSummaryMetrics}>
+            <View style={s.metric}>
+              <Text style={s.metricValue}>
+                {formatCurrency(totalBillAmount ?? computedTotal)}
+              </Text>
+              <Text style={s.metricLabel}>Total Bill</Text>
+            </View>
+            <View style={s.metricDivider} />
+            <View style={s.metric}>
+              <Text style={s.metricValue}>{pickupDistanceLabel}</Text>
+              <Text style={s.metricLabel}>Pickup</Text>
+            </View>
+            <View style={s.metricDivider} />
+            <View style={s.metric}>
+              <Text style={s.metricValue}>{displayDistance(dropDistance)}</Text>
+              <Text style={s.metricLabel}>Drop</Text>
+            </View>
+            <View style={s.metricDivider} />
+            <View style={s.metric}>
+              <Text style={s.metricValue}>{totalDistanceLabel}</Text>
+              <Text style={s.metricLabel}>Total Dist</Text>
+            </View>
+          </View>
+
+          <View style={s.orderSummaryStatusRow}>
+            <Text style={s.liveOrderLabel}>Live Order</Text>
+            <Text style={s.statusBadge}>{finalPaymentMethod || 'N/A'}</Text>
+            <Text style={s.statusTime}>{assignmentAgeLabel}</Text>
+            <Text style={s.statusTime}>{orderSummaryTimeLabel}</Text>
+          </View>
+        </View>
+
+        <View style={s.earningsStrip}>
+          <View style={s.earningsMetric}>
+            <Text style={s.earningsLabel}>EST. EARNINGS</Text>
+            <Text style={s.earningsValue}>
+              {formatCurrency(estimatedEarnings)}
+            </Text>
+          </View>
+          <View style={s.earningsDivider} />
+          <View style={s.earningsMetric}>
+            <Text style={s.earningsLabel}>PENALTY</Text>
+            <Text style={[s.earningsValue, { color: '#DC2626' }]}>₹0</Text>
+          </View>
+          <Text style={s.singleOrderBadge}>Single Order</Text>
+        </View>
+
+        {renderOperationalStatus()}
+
+        {renderStepper()}
+
+        <View style={s.scrollContent}>
+          {renderContent()}
+          <View style={{ height: 100 }} />
+        </View>
       </ScrollView>
 
       <View style={s.footer}>
@@ -2668,6 +2874,11 @@ const s = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
+  liveOrderLabel: {
+    fontSize: 9,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#16A34A',
+  },
   statusBadge: {
     paddingHorizontal: 8,
     paddingVertical: 3,
@@ -2681,6 +2892,97 @@ const s = StyleSheet.create({
     fontSize: 9,
     fontFamily: FONT_FAMILY.outfitRegular,
     color: '#64748B',
+  },
+  earningsStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+  },
+  earningsMetric: { flex: 1 },
+  earningsLabel: {
+    fontSize: 8,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#94A3B8',
+    letterSpacing: 0.5,
+  },
+  earningsValue: {
+    fontSize: 15,
+    fontFamily: FONT_FAMILY.bricolageBold,
+    color: '#0E6DFD',
+    marginTop: 2,
+  },
+  earningsDivider: {
+    width: 1,
+    height: 28,
+    backgroundColor: '#E2E8F0',
+    marginHorizontal: 12,
+  },
+  singleOrderBadge: {
+    fontSize: 8,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#64748B',
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  operationCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 14,
+    marginTop: 10,
+    padding: 11,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 9,
+  },
+  operationCardBlue: { backgroundColor: '#EFF6FF', borderColor: '#BFDBFE' },
+  operationCardAmber: { backgroundColor: '#FFFBEB', borderColor: '#FDE68A' },
+  operationCardRed: { backgroundColor: '#FEF2F2', borderColor: '#FECACA' },
+  operationIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  operationContent: { flex: 1 },
+  operationTitle: {
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#0F172A',
+  },
+  operationSub: {
+    fontSize: 10,
+    fontFamily: FONT_FAMILY.outfitRegular,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  operationTimer: {
+    fontSize: 16,
+    fontFamily: FONT_FAMILY.bricolageBold,
+    color: '#0E6DFD',
+  },
+  operationAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#FCD34D',
+  },
+  operationActionText: {
+    fontSize: 9,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#B45309',
   },
   stepper: {
     flexDirection: 'row',
@@ -2746,6 +3048,7 @@ const s = StyleSheet.create({
   },
 
   scroll: { flex: 1 },
+  pageScrollContent: { paddingBottom: 24 },
   scrollContent: { gap: 10, paddingHorizontal: 14, paddingVertical: 12 },
 
   mapPlaceholder: {
@@ -3487,6 +3790,35 @@ const s = StyleSheet.create({
     fontFamily: FONT_FAMILY.bricolageBold,
     color: '#0F172A',
   },
+  ratingBlock: {
+    alignItems: 'center',
+    width: '100%',
+    marginTop: 20,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  ratingTitle: {
+    fontSize: 14,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#0F172A',
+  },
+  ratingSub: {
+    fontSize: 11,
+    fontFamily: FONT_FAMILY.outfitRegular,
+    color: '#64748B',
+    marginTop: 3,
+  },
+  ratingStars: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 10,
+  },
+  ratingStar: {
+    fontSize: 28,
+    color: '#CBD5E1',
+  },
+  ratingStarActive: { color: '#F59E0B' },
 
   reportedAddressesHint: {
     fontSize: 11,
@@ -3639,5 +3971,23 @@ const s = StyleSheet.create({
     fontSize: 11,
     fontFamily: FONT_FAMILY.outfitBold,
     color: '#0E6DFD',
+  },
+  pendingVendorWarning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    margin: 12,
+    paddingVertical: 6,
+    paddingHorizontal: 9,
+    backgroundColor: '#FFF7ED',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#FFEDD5',
+  },
+  pendingVendorWarningText: {
+    fontSize: 11,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#C2410C',
+    flex: 1,
   },
 });

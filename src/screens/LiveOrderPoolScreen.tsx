@@ -12,12 +12,7 @@ import {
   Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import {
-  MapPin,
-  Store,
-  Zap,
-  RefreshCw,
-} from 'lucide-react-native';
+import { MapPin, Store, Zap, RefreshCw } from 'lucide-react-native';
 import { FONT_FAMILY } from '../theme/typography';
 import useAuthStore from '../hooks/useAuthStore';
 import usePoolOrders from '../hooks/usePoolOrders';
@@ -53,12 +48,10 @@ const OrderCard: React.FC<{
     return () => clearInterval(id);
   }, [order.expiresAt]);
 
-  const earning = order.estimatedEarning != null
-    ? `₹${order.estimatedEarning}`
-    : '—';
-  const distance = order.estimatedDistanceKm != null
-    ? `${order.estimatedDistanceKm} km`
-    : '—';
+  const earning =
+    order.estimatedEarning != null ? `₹${order.estimatedEarning}` : '—';
+  const distance =
+    order.estimatedDistanceKm != null ? `${order.estimatedDistanceKm} km` : '—';
 
   return (
     <View style={styles.card}>
@@ -73,7 +66,9 @@ const OrderCard: React.FC<{
       </View>
 
       {/* Order ID */}
-      <Text style={styles.orderId}>Order ID: #{order.orderId?.slice(-8)?.toUpperCase()}</Text>
+      <Text style={styles.orderId}>
+        Order ID: #{order.orderId?.slice(-8)?.toUpperCase()}
+      </Text>
 
       {/* Vendor */}
       {order.vendorName && (
@@ -109,7 +104,8 @@ const OrderCard: React.FC<{
           style={[styles.acceptBtn, isClaiming && styles.acceptBtnDisabled]}
           onPress={onAccept}
           disabled={isClaiming}
-          activeOpacity={0.8}>
+          activeOpacity={0.8}
+        >
           {isClaiming ? (
             <ActivityIndicator size="small" color="#FFFFFF" />
           ) : (
@@ -126,15 +122,20 @@ const LiveOrderPoolScreen: React.FC = () => {
   const { authData, partnerProfile } = useAuthStore();
   const partnerId = authData?.partnerId ?? '';
 
-  const [isOnline, setIsOnline] = useState(
-    partnerProfile?.isOnline ?? false,
-  );
+  const [isOnline, setIsOnline] = useState(partnerProfile?.isOnline ?? false);
   const [activeShift, setActiveShift] = useState<ShiftResponse | null>(null);
   const [shiftLoading, setShiftLoading] = useState(true);
   const [showDeactivatedWarning, setShowDeactivatedWarning] = useState(false);
 
   const { orders, loading, claiming, claimOrder, refresh } =
     usePoolOrders(isOnline);
+
+  console.log('LiveOrderPoolScreen render', {
+    isOnline,
+    activeShift,
+    shiftLoading,
+    orders,
+  });
 
   // Fetch active shift on mount
   useEffect(() => {
@@ -203,19 +204,19 @@ const LiveOrderPoolScreen: React.FC = () => {
         </View>
       );
     }
-    if (!activeShift) {
-      return (
-        <View style={styles.emptyState}>
-          <View style={styles.emptyIcon}>
-            <Zap size={36} color="#CBD5E1" strokeWidth={1.5} />
-          </View>
-          <Text style={styles.emptyTitle}>No Active Shift</Text>
-          <Text style={styles.emptySubtitle}>
-            You have no shift booked for this time slot
-          </Text>
-        </View>
-      );
-    }
+    // if (!activeShift) {
+    //   return (
+    //     <View style={styles.emptyState}>
+    //       <View style={styles.emptyIcon}>
+    //         <Zap size={36} color="#CBD5E1" strokeWidth={1.5} />
+    //       </View>
+    //       <Text style={styles.emptyTitle}>No Active Shift</Text>
+    //       <Text style={styles.emptySubtitle}>
+    //         You have no shift booked for this time slot
+    //       </Text>
+    //     </View>
+    //   );
+    // }
     return (
       <View style={styles.emptyState}>
         <View style={styles.emptyIcon}>
@@ -236,28 +237,68 @@ const LiveOrderPoolScreen: React.FC = () => {
         <TouchableOpacity
           style={styles.onlineToggle}
           onPress={handleToggleOnline}
-          activeOpacity={0.8}>
-          <View style={[styles.statusDot, isOnline ? styles.dotOnline : styles.dotOffline]} />
-          <Text style={[styles.statusText, partnerProfile?.isActive === false ? { color: '#EF4444' } : (isOnline ? styles.statusOnline : styles.statusOffline)]}>
-            {partnerProfile?.isActive === false ? 'Deactivated' : (isOnline ? 'Online' : 'Offline')}
+          activeOpacity={0.8}
+        >
+          <View
+            style={[
+              styles.statusDot,
+              isOnline ? styles.dotOnline : styles.dotOffline,
+            ]}
+          />
+          <Text
+            style={[
+              styles.statusText,
+              partnerProfile?.isActive === false
+                ? { color: '#EF4444' }
+                : isOnline
+                ? styles.statusOnline
+                : styles.statusOffline,
+            ]}
+          >
+            {partnerProfile?.isActive === false
+              ? 'Deactivated'
+              : isOnline
+              ? 'Online'
+              : 'Offline'}
           </Text>
         </TouchableOpacity>
 
-        <TouchableOpacity onPress={refresh} style={styles.refreshBtn} activeOpacity={0.7}>
+        <TouchableOpacity
+          onPress={refresh}
+          style={styles.refreshBtn}
+          activeOpacity={0.7}
+        >
           <RefreshCw size={18} color="#64748B" strokeWidth={2} />
         </TouchableOpacity>
       </View>
 
       {showDeactivatedWarning && (
-        <View style={{ backgroundColor: '#FEF2F2', borderColor: '#FCA5A5', borderWidth: 1, padding: 8, borderRadius: 6, marginHorizontal: 16, marginTop: 8 }}>
-          <Text style={{ color: '#EF4444', fontSize: 11, textAlign: 'center', fontFamily: 'Outfit-Medium' }}>
+        <View
+          style={{
+            backgroundColor: '#FEF2F2',
+            borderColor: '#FCA5A5',
+            borderWidth: 1,
+            padding: 8,
+            borderRadius: 6,
+            marginHorizontal: 16,
+            marginTop: 8,
+          }}
+        >
+          <Text
+            style={{
+              color: '#EF4444',
+              fontSize: 11,
+              textAlign: 'center',
+              fontFamily: 'Outfit-Medium',
+            }}
+          >
             You are deactivated by admin, can't go online, ask admin!
           </Text>
         </View>
       )}
 
       {/* Pool Header */}
-      <View style={styles.poolHeader}>
+      {/* <View style={styles.poolHeader}>
         <Text style={styles.poolTitle}>Live Order Pool</Text>
         {activeShift && !shiftLoading && (
           <View style={styles.shiftBanner}>
@@ -265,7 +306,7 @@ const LiveOrderPoolScreen: React.FC = () => {
             <Text style={styles.shiftBannerWindow}>{activeShift.shiftWindow}</Text>
           </View>
         )}
-      </View>
+      </View> */}
 
       {/* Order List */}
       {loading || shiftLoading ? (
