@@ -6,7 +6,7 @@ interface PricingStore {
   configs: Record<ServiceType, PricingConfigItem[]>;
   loading: boolean;
   error: string | null;
-  fetchPricing: (serviceType: ServiceType) => Promise<void>;
+  fetchPricing: (serviceType: ServiceType, regionId: any) => Promise<void>;
   getPricingValues: (serviceType: ServiceType) => PricingValues;
 }
 
@@ -62,7 +62,7 @@ const usePricingStore = create<PricingStore>((set, get) => ({
   loading: false,
   error: null,
 
-  fetchPricing: async (serviceType: ServiceType) => {
+  fetchPricing: async (serviceType: ServiceType, regionId: any) => {
     set({ loading: true, error: null });
     try {
       const items = await fetchPricingConfig(serviceType);

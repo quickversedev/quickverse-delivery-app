@@ -737,8 +737,8 @@ const HomeScreen: React.FC = () => {
   );
 
   useEffect(() => {
-    fetchPricing('FOOD');
-    fetchPricing('GROCERY');
+    fetchPricing('FOOD', partnerProfile?.regionId || 'BEED-431122');
+    fetchPricing('GROCERY', partnerProfile?.regionId || 'BEED-431122');
   }, []);
 
   useEffect(() => {
@@ -845,6 +845,7 @@ const HomeScreen: React.FC = () => {
       const data = await deliveryPartnerService.getDeliveryPartnerStats(
         partnerId,
         period,
+        partnerProfile?.regionId || 'BEED-431122',
       );
       console.log('[Partner Stats] Fetched data:', data);
       setPartnerStats(data);

@@ -15,6 +15,7 @@ export type DeliveryPartnerProfile = {
   isVerified?: boolean;
   rating?: number;
   acceptanceRate?: number;
+  regionId?: any;
 };
 
 export type NotificationSettings = {
@@ -56,7 +57,7 @@ export type DeliveryPartnerOrder = {
   customerId: number | null;
   shopId: number | null;
   deliveryPartnerId: string;
-  regionId: string | null;
+  regionId: any;
   financeId: string | null;
   orderStatus: string;
   onTime: boolean | null;
@@ -255,6 +256,7 @@ type DeliveryPartnerApiResponse = {
     isVerified?: boolean;
     rating?: number;
     acceptanceRate?: number;
+    regionId?: any;
   };
   id?: string;
   deliveryPartnerId?: string;
@@ -278,6 +280,7 @@ type DeliveryPartnerApiResponse = {
   isVerified?: boolean;
   rating?: number;
   acceptanceRate?: number;
+  regionId?: any;
 };
 
 const normalizePartnerProfile = (
@@ -315,6 +318,7 @@ const normalizePartnerProfile = (
     isVerified: Boolean(payload?.isVerified ?? false),
     rating: Number(payload?.rating ?? 0),
     acceptanceRate: Number(payload?.acceptanceRate ?? 0),
+    regionId: payload?.regionId ? String(payload.regionId) : null,
   };
 };
 
@@ -823,6 +827,7 @@ export type DeliveryPartnerStats = {
 const getDeliveryPartnerStats = async (
   partnerId: string,
   period: StatsPeriod = 'today',
+  regionId: string | null = 'BEED-431122',
 ): Promise<DeliveryPartnerStats> => {
   const sessionKey = await TokenStorage.getToken();
 
@@ -832,7 +837,7 @@ const getDeliveryPartnerStats = async (
         SessionKey: sessionKey || '',
         'Request-Origin': 'CAPTAIN',
       },
-      params: { period },
+      params: { period, regionId },
       validateStatus: status => status >= 200 && status < 400,
     }),
   );

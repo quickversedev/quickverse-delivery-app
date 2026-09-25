@@ -18,6 +18,8 @@ const getOpenPoolOrders = async (regionId?: string): Promise<PoolOrder[]> => {
       params: regionId ? { regionId } : {},
     }),
   );
+
+  console.log("Pool Order : ", data?.data)
   return data?.data ?? [];
 };
 
