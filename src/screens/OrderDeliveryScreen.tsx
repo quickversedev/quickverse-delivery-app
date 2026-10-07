@@ -72,12 +72,12 @@ interface StageConfig {
   buttonLabel: string;
   buttonColor: string;
   apiAction:
-    | 'acceptOrder'
-    | 'arriveStore'
-    | 'pickup'
-    | 'arriveDestination'
-    | 'completeDelivery'
-    | null;
+  | 'acceptOrder'
+  | 'arriveStore'
+  | 'pickup'
+  | 'arriveDestination'
+  | 'completeDelivery'
+  | null;
 }
 
 interface CoordinateData {
@@ -110,8 +110,8 @@ const calculateEstimatedTimeMinutes = (
 const formatTimeLabel = (minutes: number | null): string => {
   if (minutes === null) return 'Calculating...';
   if (minutes < 1) return '< 1 min';
-  if (minutes === 1) return '1 min';
-  return `${minutes} min${minutes !== 1 ? 's' : ''}`;
+  if (minutes < 60) return `${minutes} min${minutes !== 1 ? 's' : ''}`;
+  return `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')} hr`;
 };
 
 const formatEstimateCountdown = (
@@ -128,9 +128,9 @@ const formatEstimateCountdown = (
   const seconds = remainingSeconds % 60;
   return hours > 0
     ? `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(
-        2,
-        '0',
-      )}`
+      2,
+      '0',
+    )}`
     : `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 };
 
@@ -404,8 +404,8 @@ const parseTimestampValue = (
     return numericValue > 10_000_000_000
       ? numericValue
       : numericValue > 1_000_000_000
-      ? numericValue * 1000
-      : null;
+        ? numericValue * 1000
+        : null;
   }
   const normalized = String(value).replace(' ', 'T');
   const parsed = new Date(normalized);
@@ -731,9 +731,9 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
     parsedCustomerCoord ??
     (reportedCustomerCoord
       ? {
-          lat: Number(reportedCustomerCoord.latitude),
-          lng: Number(reportedCustomerCoord.longitude),
-        }
+        lat: Number(reportedCustomerCoord.latitude),
+        lng: Number(reportedCustomerCoord.longitude),
+      }
       : null);
 
   const distanceInKm = (
@@ -747,8 +747,8 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
     const a =
       Math.sin(latitudeDelta / 2) ** 2 +
       Math.cos(toRadians(from.lat)) *
-        Math.cos(toRadians(to.lat)) *
-        Math.sin(longitudeDelta / 2) ** 2;
+      Math.cos(toRadians(to.lat)) *
+      Math.sin(longitudeDelta / 2) ** 2;
     return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   };
 
@@ -797,17 +797,17 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
     null;
   const tipAmount = (
     order.finance as
-      | (typeof order.finance & {
-          tip?: number | null;
-        })
-      | null
+    | (typeof order.finance & {
+      tip?: number | null;
+    })
+    | null
   )?.tip;
   const surgeFee = (
     order.finance as
-      | (typeof order.finance & {
-          surgeFee?: number | null;
-        })
-      | null
+    | (typeof order.finance & {
+      surgeFee?: number | null;
+    })
+    | null
   )?.surgeFee;
   const isHotOrder = Boolean(
     (order as DeliveryPartnerOrder & { isHotOrder?: boolean }).isHotOrder,
@@ -817,12 +817,12 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
   const numericOrderCreatedAt = Number(rawOrderCreatedAt);
   const parsedOrderCreatedAt =
     rawOrderCreatedAt &&
-    Number.isFinite(numericOrderCreatedAt) &&
-    numericOrderCreatedAt > 0
+      Number.isFinite(numericOrderCreatedAt) &&
+      numericOrderCreatedAt > 0
       ? new Date(numericOrderCreatedAt)
       : rawOrderCreatedAt
-      ? new Date(rawOrderCreatedAt.replace(' ', 'T'))
-      : null;
+        ? new Date(rawOrderCreatedAt.replace(' ', 'T'))
+        : null;
   const orderCreatedAt =
     parsedOrderCreatedAt && !Number.isNaN(parsedOrderCreatedAt.getTime())
       ? parsedOrderCreatedAt.getTime()
@@ -834,8 +834,10 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
     assignmentAge == null
       ? 'N/A'
       : assignmentAge < 1
-      ? 'Just now'
-      : `${assignmentAge} min${assignmentAge === 1 ? '' : 's'}`;
+        ? 'Just now'
+        : assignmentAge < 60
+          ? `${assignmentAge} min${assignmentAge === 1 ? '' : 's'} ago`
+          : `${Math.floor(assignmentAge / 60)}:${String(assignmentAge % 60).padStart(2, '0')} hr ago`;
   const assignmentElapsedMs = orderCreatedAt ? now - orderCreatedAt : null;
   const expiryRemainingSeconds =
     assignmentElapsedMs != null
@@ -852,12 +854,12 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
     orderStatus === 'PARTNER_ASSIGNED'
       ? orderCreatedAt
       : orderStatus === 'ACCEPTED'
-      ? parseTimestampValue(order.assignedAt)
-      : orderStatus === 'ARRIVED_AT_STORE'
-      ? parseTimestampValue(order.arrivedAtStoreAt)
-      : orderStatus === 'ORDER_PICKED_UP'
-      ? parseTimestampValue(order.pickedUpAt)
-      : parseTimestampValue(order.reachedLocationAt);
+        ? parseTimestampValue(order.assignedAt)
+        : orderStatus === 'ARRIVED_AT_STORE'
+          ? parseTimestampValue(order.arrivedAtStoreAt)
+          : orderStatus === 'ORDER_PICKED_UP'
+            ? parseTimestampValue(order.pickedUpAt)
+            : parseTimestampValue(order.reachedLocationAt);
   const pickupDeadlineSeconds = stageStartedAt
     ? Math.max(0, Math.ceil((30 * 60000 - (now - stageStartedAt)) / 1000))
     : null;
@@ -898,8 +900,8 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
   const finalPaymentMethod = isPrepaid
     ? 'PREPAID'
     : paymentMode === 'ONLINE'
-    ? 'QR CODE'
-    : 'CASH';
+      ? 'QR CODE'
+      : 'CASH';
 
   const customerMobileDisplay = order.orderDetails?.customerMobile
     ? String(order.orderDetails.customerMobile).slice(-10)
@@ -969,7 +971,7 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
               setQrImageAspectRatio(w / h);
             }
           },
-          () => {},
+          () => { },
         );
 
         startPaymentPolling(orderId);
@@ -1195,7 +1197,7 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
     const hours = Math.floor(diffMins / 60);
     const mins = diffMins % 60;
 
-    return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`;
+    return `${hours}:${String(mins).padStart(2, '0')} hr`;
   };
 
   // ── Reset the reported-address form (EMPTY) ──
@@ -2222,8 +2224,8 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
       Number.isFinite(num) && num > 0
         ? new Date(num)
         : new Date(
-            timeValue.includes(' ') ? timeValue.replace(' ', 'T') : timeValue,
-          );
+          timeValue.includes(' ') ? timeValue.replace(' ', 'T') : timeValue,
+        );
     if (isNaN(date.getTime())) return null;
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
@@ -2302,11 +2304,11 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
   // Region for the mini-map inside the "Report Another Location" modal.
   const reportMapRegion: Region | null = reportPinCoord
     ? {
-        latitude: reportPinCoord.lat,
-        longitude: reportPinCoord.lng,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
-      }
+      latitude: reportPinCoord.lat,
+      longitude: reportPinCoord.lng,
+      latitudeDelta: 0.01,
+      longitudeDelta: 0.01,
+    }
     : null;
 
   return (
@@ -2340,9 +2342,9 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
           <View style={s.orderSummaryMetrics}>
             <View style={s.metric}>
               <Text style={s.metricValue}>
-                {formatCurrency(totalBillAmount ?? computedTotal)}
+                {formatCurrency(order?.riderEarnings ?? 0)}
               </Text>
-              <Text style={s.metricLabel}>Total Bill</Text>
+              <Text style={s.metricLabel}>Earnings</Text>
             </View>
             <View style={s.metricDivider} />
             <View style={s.metric}>
@@ -2364,19 +2366,11 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
           <View style={s.orderSummaryStatusRow}>
             <Text style={s.liveOrderLabel}>Live Order</Text>
             <Text style={s.statusBadge}>{finalPaymentMethod || 'N/A'}</Text>
-            <Text style={s.statusTime}>{assignmentAgeLabel}</Text>
-            <Text style={s.statusTime}>{orderSummaryTimeLabel}</Text>
+            <Text style={[s.statusTime, { marginLeft: 'auto' }]}>{assignmentAgeLabel}</Text>
           </View>
         </View>
 
         <View style={s.earningsStrip}>
-          <View style={s.earningsMetric}>
-            <Text style={s.earningsLabel}>EST. EARNINGS</Text>
-            <Text style={s.earningsValue}>
-              {formatCurrency(estimatedEarnings)}
-            </Text>
-          </View>
-          <View style={s.earningsDivider} />
           <View style={s.earningsMetric}>
             <Text style={s.earningsLabel}>PENALTY</Text>
             <Text style={[s.earningsValue, { color: '#DC2626' }]}>₹0</Text>
@@ -2593,8 +2587,8 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
                 <Text style={s.reportMetaValue}>
                   {reportPinCoord
                     ? `${reportPinCoord.lat.toFixed(
-                        5,
-                      )}, ${reportPinCoord.lng.toFixed(5)}`
+                      5,
+                    )}, ${reportPinCoord.lng.toFixed(5)}`
                     : 'Waiting for location'}
                 </Text>
               </View>

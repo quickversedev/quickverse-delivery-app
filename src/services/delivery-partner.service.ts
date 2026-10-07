@@ -79,6 +79,7 @@ export type DeliveryPartnerOrder = {
   shopDetails: DeliveryPartnerShopDetails | null;
   customerAddressId: string | null;
   reportedAddresses: ReportedAddress[] | null;
+  riderEarnings: number;
 };
 
 export type DeliveryPartnerOrderItem = {
@@ -446,6 +447,7 @@ const normalizePartnerOrder = (order: any): DeliveryPartnerOrder => ({
   finance: order?.orderDetails?.finance || null,
   customerAddressId: order?.orderDetails?.customerAddressId || null,
   reportedAddresses: (order?.orderDetails?.reportedAddresses) || [],
+  riderEarnings: typeof order?.riderEarnings === 'number' ? order.riderEarnings : (typeof order?.finance?.riderEarnings === 'number' ? order.finance.riderEarnings : (typeof order?.orderDetails?.finance?.riderEarnings === 'number' ? order.orderDetails.finance.riderEarnings : 0)),
   orderDetails: order?.orderDetails
     ? {
         orderId: String(order.orderDetails?.orderId ?? order?.orderId ?? ''),
