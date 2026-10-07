@@ -12,6 +12,7 @@ const getHeaders = async () => {
 
 const getOpenPoolOrders = async (regionId?: string): Promise<PoolOrder[]> => {
   const headers = await getHeaders();
+  console.log('data', regionId, headers);
   const data = await apiCall<{ data: PoolOrder[] }>(
     axiosInstance.get('/quickVerse/v3/order-pool', {
       headers,

@@ -45,9 +45,11 @@ const LiveOrderPoolScreen: React.FC = () => {
   const [currentLocation, setCurrentLocation] = useState<Coordinate | null>(
     null,
   );
-
-  const { orders, loading, claiming, claimOrder, refresh } =
-    usePoolOrders(isOnline);
+  console.log(partnerProfile);
+  const { orders, loading, claiming, claimOrder, refresh } = usePoolOrders(
+    isOnline,
+    partnerProfile?.regionId,
+  );
 
   // Fetch active shift on mount
   useEffect(() => {

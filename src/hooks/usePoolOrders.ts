@@ -11,7 +11,7 @@ interface UsePoolOrdersResult {
   refresh: () => Promise<void>;
 }
 
-export default function usePoolOrders(isOnline: boolean): UsePoolOrdersResult {
+export default function usePoolOrders(isOnline: boolean, regionId?: string): UsePoolOrdersResult {
   const [orders, setOrders] = useState<PoolOrder[]>([]);
   const [loading, setLoading] = useState(false);
   const [claiming, setClaiming] = useState<string | null>(null);
@@ -20,7 +20,7 @@ export default function usePoolOrders(isOnline: boolean): UsePoolOrdersResult {
   const fetch = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await poolService.getOpenPoolOrders();
+      const data = await poolService.getOpenPoolOrders(regionId);
       setOrders(data);
     } catch (e) {
       console.warn('[usePoolOrders] fetch failed', e);
