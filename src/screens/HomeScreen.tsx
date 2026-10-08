@@ -59,6 +59,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker, {
   DateTimePickerEvent,
 } from '@react-native-community/datetimepicker';
+import {
+  getOrderAlertSoundEnabled,
+  playOrderAlert,
+  stopOrderAlert,
+  setOrderAlertSoundEnabled,
+} from '../services/order-alert.service';
 
 type RootStackParamList = {
   MainTabs: undefined;
@@ -219,8 +225,8 @@ const LiveOrderCard: React.FC<LiveOrderCardProps> = ({
     const a =
       Math.sin(latitudeDelta / 2) ** 2 +
       Math.cos(toRadians(from.latitude)) *
-      Math.cos(toRadians(to.latitude)) *
-      Math.sin(longitudeDelta / 2) ** 2;
+        Math.cos(toRadians(to.latitude)) *
+        Math.sin(longitudeDelta / 2) ** 2;
     return earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   };
 
@@ -237,31 +243,33 @@ const LiveOrderCard: React.FC<LiveOrderCardProps> = ({
   const assignmentDate = parseDateValueLocal(order.assignedAt);
   const assignmentLabel = assignmentDate
     ? (() => {
-      const elapsedMinutes = Math.max(
-        0,
-        Math.floor((Date.now() - assignmentDate.getTime()) / 60000),
-      );
-      return elapsedMinutes < 1
-        ? 'Just now'
-        : elapsedMinutes < 60
+        const elapsedMinutes = Math.max(
+          0,
+          Math.floor((Date.now() - assignmentDate.getTime()) / 60000),
+        );
+        return elapsedMinutes < 1
+          ? 'Just now'
+          : elapsedMinutes < 60
           ? `${elapsedMinutes} min${elapsedMinutes === 1 ? '' : 's'} ago`
-          : `${Math.floor(elapsedMinutes / 60)}:${String(elapsedMinutes % 60).padStart(2, '0')} hr ago`;
-    })()
+          : `${Math.floor(elapsedMinutes / 60)}:${String(
+              elapsedMinutes % 60,
+            ).padStart(2, '0')} hr ago`;
+      })()
     : 'N/A';
   const totalBillAmount = order.finance?.payableAmount ?? null;
   const tipAmount = (
     order.finance as
-    | (typeof order.finance & {
-      tip?: number | null;
-    })
-    | null
+      | (typeof order.finance & {
+          tip?: number | null;
+        })
+      | null
   )?.tip;
   const surgeFee = (
     order.finance as
-    | (typeof order.finance & {
-      surgeFee?: number | null;
-    })
-    | null
+      | (typeof order.finance & {
+          surgeFee?: number | null;
+        })
+      | null
   )?.surgeFee;
   const pickupDistanceLabel =
     pickupDistance == null ? 'N/A' : `${Number(pickupDistance).toFixed(1)} km`;
@@ -374,6 +382,8 @@ const NewOrderRequestCard: React.FC<NewOrderRequestCardProps> = ({
       ? order.orderDetails.orderItem.map(item => item.name).join(', ')
       : null);
 
+  const ROAD_DISTANCE_FACTOR = 1.4;
+
   const toRadians = (value: number) => (value * Math.PI) / 180;
   const distanceInKm = (
     from: { latitude: number | null; longitude: number | null } | null,
@@ -391,12 +401,17 @@ const NewOrderRequestCard: React.FC<NewOrderRequestCardProps> = ({
     }
     const latitudeDelta = toRadians(to.latitude - from.latitude);
     const longitudeDelta = toRadians(to.longitude - from.longitude);
+
     const a =
       Math.sin(latitudeDelta / 2) ** 2 +
       Math.cos(toRadians(from.latitude)) *
-      Math.cos(toRadians(to.latitude)) *
-      Math.sin(longitudeDelta / 2) ** 2;
-    return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        Math.cos(toRadians(to.latitude)) *
+        Math.sin(longitudeDelta / 2) ** 2;
+
+    const straightLineDistanceKm =
+      6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    return straightLineDistanceKm * ROAD_DISTANCE_FACTOR;
   };
   const pickupDistance = distanceInKm(currentLocation, order.shopDetails);
   const customerLocation =
@@ -406,17 +421,17 @@ const NewOrderRequestCard: React.FC<NewOrderRequestCardProps> = ({
   const deliveryDistance = distanceInKm(order.shopDetails, customerLocation);
   const assignmentDate = order.assignedAt
     ? (() => {
-      const numericValue = Number(order.assignedAt);
-      if (Number.isFinite(numericValue) && numericValue > 0) {
-        const numericDate = new Date(numericValue);
-        return Number.isNaN(numericDate.getTime()) ? null : numericDate;
-      }
-      const normalizedValue = order.assignedAt.includes(' ')
-        ? order.assignedAt.replace(' ', 'T')
-        : order.assignedAt;
-      const stringDate = new Date(normalizedValue);
-      return Number.isNaN(stringDate.getTime()) ? null : stringDate;
-    })()
+        const numericValue = Number(order.assignedAt);
+        if (Number.isFinite(numericValue) && numericValue > 0) {
+          const numericDate = new Date(numericValue);
+          return Number.isNaN(numericDate.getTime()) ? null : numericDate;
+        }
+        const normalizedValue = order.assignedAt.includes(' ')
+          ? order.assignedAt.replace(' ', 'T')
+          : order.assignedAt;
+        const stringDate = new Date(normalizedValue);
+        return Number.isNaN(stringDate.getTime()) ? null : stringDate;
+      })()
     : null;
   const elapsedMinutes = assignmentDate
     ? Math.max(0, Math.floor((Date.now() - assignmentDate.getTime()) / 60000))
@@ -425,23 +440,25 @@ const NewOrderRequestCard: React.FC<NewOrderRequestCardProps> = ({
     elapsedMinutes == null
       ? 'N/A'
       : elapsedMinutes < 1
-        ? 'Just now'
-        : elapsedMinutes < 60
-          ? `${elapsedMinutes} min${elapsedMinutes === 1 ? '' : 's'} ago`
-          : `${Math.floor(elapsedMinutes / 60)}:${String(elapsedMinutes % 60).padStart(2, '0')} hr ago`;
+      ? 'Just now'
+      : elapsedMinutes < 60
+      ? `${elapsedMinutes} min${elapsedMinutes === 1 ? '' : 's'} ago`
+      : `${Math.floor(elapsedMinutes / 60)}:${String(
+          elapsedMinutes % 60,
+        ).padStart(2, '0')} hr ago`;
   const tipAmount = (
     order.finance as
-    | (typeof order.finance & {
-      tip?: number | null;
-    })
-    | null
+      | (typeof order.finance & {
+          tip?: number | null;
+        })
+      | null
   )?.tip;
   const surgeFee = (
     order.finance as
-    | (typeof order.finance & {
-      surgeFee?: number | null;
-    })
-    | null
+      | (typeof order.finance & {
+          surgeFee?: number | null;
+        })
+      | null
   )?.surgeFee;
 
   return (
@@ -666,6 +683,8 @@ const HomeScreen: React.FC = () => {
 
   const [isOnline, setIsOnline] = useState(false);
   const [isToggling, setIsToggling] = useState(false);
+  const [isOrderAlertSoundEnabled, setIsOrderAlertSoundEnabled] =
+    useState(false);
   const [orders, setOrders] = useState<DeliveryPartnerOrder[]>([]);
   const [isOrdersLoading, setIsOrdersLoading] = useState(false);
   const [isOrdersRefreshing, setIsOrdersRefreshing] = useState(false);
@@ -747,6 +766,20 @@ const HomeScreen: React.FC = () => {
     }
   }, [partnerProfile]);
 
+  useEffect(() => {
+    getOrderAlertSoundEnabled().then(setIsOrderAlertSoundEnabled);
+  }, []);
+
+  const handleOrderAlertSoundToggle = async (enabled: boolean) => {
+    setIsOrderAlertSoundEnabled(enabled);
+    try {
+      await setOrderAlertSoundEnabled(enabled);
+    } catch {
+      setIsOrderAlertSoundEnabled(!enabled);
+      Alert.alert('Unable to update sound setting', 'Please try again.');
+    }
+  };
+
   const partnerId = partnerProfile?.id || authData.partnerId || '';
   const currentStatus = getStatusType(
     isOnline,
@@ -809,7 +842,20 @@ const HomeScreen: React.FC = () => {
           partnerId,
           'all',
         );
-      setOrders(getUniqueLatestOrders(response));
+      const latestOrders = getUniqueLatestOrders(response);
+      setOrders(latestOrders);
+      const pendingOrderCount = latestOrders.filter(
+        order => order.orderStatus?.toUpperCase() === 'PARTNER_ASSIGNED',
+      ).length;
+      console.log(
+        '[OrderAlert] Home poll found pending orders:',
+        pendingOrderCount,
+      );
+      if (pendingOrderCount > 0) {
+        await playOrderAlert(pendingOrderCount);
+      } else {
+        await stopOrderAlert();
+      }
     } catch (error) {
       console.error('Fetch assigned orders failed', error);
       setOrdersError('Unable to load your assigned orders. Please try again.');
@@ -907,7 +953,8 @@ const HomeScreen: React.FC = () => {
       if (event.status?.toUpperCase().includes('CANCEL')) {
         Alert.alert(
           'Order Cancelled',
-          `Order #${event.orderId} from ${event.customerName || 'customer'
+          `Order #${event.orderId} from ${
+            event.customerName || 'customer'
           } has been cancelled.`,
         );
       }
@@ -1083,18 +1130,18 @@ const HomeScreen: React.FC = () => {
     paymentTypeFilter === 'all'
       ? todaysPastOrders
       : todaysPastOrders.filter(
-        o => getOrderPaymentType(o) === paymentTypeFilter,
-      );
+          o => getOrderPaymentType(o) === paymentTypeFilter,
+        );
 
   const paymentTypeFilterOptions: {
     key: 'all' | PaymentTypeKey;
     label: string;
   }[] = [
-      { key: 'all', label: 'All' },
-      { key: 'prepaid', label: 'Prepaid' },
-      { key: 'codCash', label: 'Cash' },
-      { key: 'codQrCode', label: 'QR Code' },
-    ];
+    { key: 'all', label: 'All' },
+    { key: 'prepaid', label: 'Prepaid' },
+    { key: 'codCash', label: 'Cash' },
+    { key: 'codQrCode', label: 'QR Code' },
+  ];
 
   const formatStatusLabel = (status: string) =>
     status
@@ -1443,7 +1490,7 @@ const HomeScreen: React.FC = () => {
                 styles.customModalApplyBtn,
                 styles.rejectConfirmBtn,
                 orderActionLoadingId !== null &&
-                styles.customModalApplyBtnDisabled,
+                  styles.customModalApplyBtnDisabled,
               ]}
               disabled={orderActionLoadingId !== null}
               onPress={handleConfirmReject}
@@ -1690,8 +1737,8 @@ const HomeScreen: React.FC = () => {
       isPartnerRejectedOrder(order)
         ? 'PARTNER_REJECTED'
         : order.orderDetails?.state?.toUpperCase() ??
-        order.orderStatus?.toUpperCase() ??
-        'UNKNOWN',
+            order.orderStatus?.toUpperCase() ??
+            'UNKNOWN',
     );
     const shopId = order.orderDetails?.shopId ?? order.shopId;
 
@@ -1705,9 +1752,9 @@ const HomeScreen: React.FC = () => {
     const customerCoordinate =
       customerAddress.latitude != null && customerAddress.longitude != null
         ? {
-          latitude: customerAddress.latitude,
-          longitude: customerAddress.longitude,
-        }
+            latitude: customerAddress.latitude,
+            longitude: customerAddress.longitude,
+          }
         : null;
     const shopAddressText = [
       order.shopDetails?.address?.address,
@@ -1719,24 +1766,24 @@ const HomeScreen: React.FC = () => {
       .join(', ');
     const shopCoordinate =
       order.shopDetails?.address?.latitude != null &&
-        order.shopDetails?.address?.longitude != null
+      order.shopDetails?.address?.longitude != null
         ? {
-          latitude: order.shopDetails.address.latitude,
-          longitude: order.shopDetails.address.longitude,
-        }
+            latitude: order.shopDetails.address.latitude,
+            longitude: order.shopDetails.address.longitude,
+          }
         : order.shopDetails?.coordinates?.latitude != null &&
           order.shopDetails?.coordinates?.longitude != null
-          ? {
+        ? {
             latitude: order.shopDetails.coordinates.latitude,
             longitude: order.shopDetails.coordinates.longitude,
           }
-          : order.shopDetails?.latitude != null &&
-            order.shopDetails?.longitude != null
-            ? {
-              latitude: order.shopDetails.latitude,
-              longitude: order.shopDetails.longitude,
-            }
-            : null;
+        : order.shopDetails?.latitude != null &&
+          order.shopDetails?.longitude != null
+        ? {
+            latitude: order.shopDetails.latitude,
+            longitude: order.shopDetails.longitude,
+          }
+        : null;
     const shopImage =
       order.shopDetails?.banner || order.shopDetails?.logo || null;
     const orderDescription =
@@ -2288,6 +2335,16 @@ const HomeScreen: React.FC = () => {
               </>
             )}
           </TouchableOpacity>
+          <View style={styles.orderAlertToggle}>
+            <Text style={styles.orderAlertToggleLabel}>Order sound</Text>
+            <Switch
+              value={isOrderAlertSoundEnabled}
+              onValueChange={handleOrderAlertSoundToggle}
+              trackColor={{ false: '#CBD5E1', true: '#93C5FD' }}
+              thumbColor={isOrderAlertSoundEnabled ? '#0E6DFD' : '#F8FAFC'}
+              accessibilityLabel="Toggle continuous new order sound"
+            />
+          </View>
         </View>
 
         {/* Deactivation Warning */}
@@ -2407,8 +2464,9 @@ const HomeScreen: React.FC = () => {
                     <Text style={styles.levelHint}>
                       {hasStats
                         ? dailyRemaining > 0
-                          ? `${dailyRemaining} more orders to reach level ${nextLevel?.name ?? currentLevel.name
-                          }`
+                          ? `${dailyRemaining} more orders to reach level ${
+                              nextLevel?.name ?? currentLevel.name
+                            }`
                           : `Target achieved. ₹${BONUS_PER_TARGET} bonus unlocked`
                         : 'Complete more orders to unlock rewards'}
                     </Text>
@@ -2417,13 +2475,14 @@ const HomeScreen: React.FC = () => {
                         style={[
                           styles.levelProgressFill,
                           {
-                            width: `${hasStats
+                            width: `${
+                              hasStats
                                 ? Math.min(
-                                  (totalXp / (levelMaxXp || 1)) * 100,
-                                  100,
-                                )
+                                    (totalXp / (levelMaxXp || 1)) * 100,
+                                    100,
+                                  )
                                 : 0
-                              }%`,
+                            }%`,
                           },
                         ]}
                       />
@@ -2479,7 +2538,7 @@ const HomeScreen: React.FC = () => {
                                 style={[
                                   styles.leaderboardName,
                                   isCurrentUser &&
-                                  styles.leaderboardNameHighlight,
+                                    styles.leaderboardNameHighlight,
                                 ]}
                               >
                                 {rider.name}
@@ -2576,7 +2635,7 @@ const HomeScreen: React.FC = () => {
                           style={[
                             styles.filterChip,
                             paymentTypeFilter === item.key &&
-                            styles.filterChipActive,
+                              styles.filterChipActive,
                           ]}
                           onPress={() => setPaymentTypeFilter(item.key)}
                           activeOpacity={0.8}
@@ -2585,7 +2644,7 @@ const HomeScreen: React.FC = () => {
                             style={[
                               styles.filterChipText,
                               paymentTypeFilter === item.key &&
-                              styles.filterChipTextActive,
+                                styles.filterChipTextActive,
                             ]}
                           >
                             {item.label}
@@ -2621,7 +2680,7 @@ const HomeScreen: React.FC = () => {
         message={otpModalConfig?.message ?? ''}
         isLoading={otpLoading}
         errorText={otpError}
-        onSubmit={() => { }}
+        onSubmit={() => {}}
         onCancel={() => setOtpModalVisible(false)}
       />
       {renderCustomDateModal()}
@@ -2802,6 +2861,16 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontFamily: FONT_FAMILY.outfitBold,
     color: '#FFFFFF',
+  },
+  orderAlertToggle: {
+    alignItems: 'center',
+    marginLeft: 8,
+  },
+  orderAlertToggleLabel: {
+    color: '#475569',
+    fontSize: 9,
+    fontFamily: FONT_FAMILY.outfitBold,
+    marginBottom: 1,
   },
 
   // ────── DEACTIVATION WARNING ───────────────────────────────────────────

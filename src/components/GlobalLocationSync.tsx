@@ -4,8 +4,14 @@ import BackgroundService from 'react-native-background-actions';
 import useAuthStore from '../hooks/useAuthStore';
 import deliveryPartnerService from '../services/delivery-partner.service';
 import { getBestEffortCurrentLocation } from '../utils/location';
+import {
+  getOrderAlertSoundEnabled,
+  playOrderAlert,
+  stopOrderAlert,
+} from '../services/order-alert.service';
 
 const LOCATION_SYNC_INTERVAL_MS = 20000;
+const ORDER_ALERT_INTERVAL_MS = 5000;
 
 const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
@@ -45,21 +51,41 @@ const locationTask = async (taskData?: { partnerId: string }) => {
   if (!partnerId) { return; }
 
   await new Promise<void>(async resolve => {
+    let lastLocationSyncAt = 0;
     while (BackgroundService.isRunning()) {
       try {
-        const coordinate = await getBestEffortCurrentLocation();
-        console.log('[LocationSync] Got location:', coordinate.latitude, coordinate.longitude);
-        await deliveryPartnerService.updateDeliveryPartnerLocation(
-          partnerId,
-          coordinate.latitude,
-          coordinate.longitude,
-        );
-        console.log('[LocationSync] Sync successful');
+        const now = Date.now();
+        if (now - lastLocationSyncAt >= LOCATION_SYNC_INTERVAL_MS) {
+          const coordinate = await getBestEffortCurrentLocation();
+          console.log('[LocationSync] Got location:', coordinate.latitude, coordinate.longitude);
+          await deliveryPartnerService.updateDeliveryPartnerLocation(
+            partnerId,
+            coordinate.latitude,
+            coordinate.longitude,
+          );
+          lastLocationSyncAt = now;
+          console.log('[LocationSync] Sync successful');
+        }
+
+        if (await getOrderAlertSoundEnabled()) {
+          const orders = await deliveryPartnerService.getAssignedOrdersByPartnerId(
+            partnerId,
+            'all',
+          );
+          const pendingOrders = orders.filter(
+            order =>
+              order.orderStatus?.toUpperCase() === 'PARTNER_ASSIGNED',
+          );
+          await playOrderAlert(pendingOrders.length);
+        } else {
+          await stopOrderAlert();
+        }
       } catch (error) {
-        console.error('[LocationSync] Sync failed:', error);
+        console.error('[LocationSync] Background sync failed:', error);
       }
-      await sleep(LOCATION_SYNC_INTERVAL_MS);
+      await sleep(ORDER_ALERT_INTERVAL_MS);
     }
+    await stopOrderAlert();
     resolve();
   });
 };

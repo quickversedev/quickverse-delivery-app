@@ -85,6 +85,8 @@ Three notification channels defined in `index.js`:
 
 Sound files live in `android/app/src/main/res/raw/`. Channel routing depends on backend sending `data.channelId` in the FCM payload; without it, everything falls back to `default_channel`.
 
+The Home screen's Order sound switch controls `src/services/order-alert.service.ts`. Pending `PARTNER_ASSIGNED` orders use `react-native-sound` to loop `noti1.mp3`; the foreground background-actions service checks for new orders every 5 seconds and stops the player when no pending assignments remain. The ongoing Notifee notification provides the visible background/recent-apps alert.
+
 `NotificationSetup.tsx` (renders `null`, mounted in `App.tsx`) handles all FCM/notifee listeners, token refresh re-registration, and notification tap -> persist -> flush navigation. FCM token is deleted on logout (`authStore.ts`).
 
 `AndroidManifest.xml` declares `default_notification_channel_id`, custom notification icon (`ic_notification`), and accent color. Uses `tools:replace` to override values from the Firebase messaging library.
