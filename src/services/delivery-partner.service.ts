@@ -115,6 +115,9 @@ export type DeliveryPartnerOrderDetails = {
   orderLink: string | null;
   paymentMethod: string | null;
   paymentProofURLImageUrl: string | null;
+  dropDistance: number | null;
+  pickupDistance: number | null;
+  totalDistance: number | null;
 };
 
 export type DeliveryPartnerShopAddress = {
@@ -545,6 +548,15 @@ const normalizePartnerOrder = (order: any): DeliveryPartnerOrder => ({
         paymentProofURLImageUrl: order.orderDetails?.paymentProofURLImageUrl
           ? String(order.orderDetails.paymentProofURLImageUrl)
           : null,
+        dropDistance: typeof order.orderDetails?.dropDistance === 'number'
+          ? order.orderDetails.dropDistance
+          : (order.orderDetails?.dropDistance ? Number(order.orderDetails.dropDistance) : null),
+        pickupDistance: typeof order.orderDetails?.pickupDistance === 'number'
+          ? order.orderDetails.pickupDistance
+          : (order.orderDetails?.pickupDistance ? Number(order.orderDetails.pickupDistance) : null),
+        totalDistance: typeof order.orderDetails?.totalDistance === 'number'
+          ? order.orderDetails.totalDistance
+          : (order.orderDetails?.totalDistance ? Number(order.orderDetails.totalDistance) : null),
       }
     : null,
   shopDetails: order?.shopDetails
@@ -760,11 +772,12 @@ const getReportedAddressesByCustomer = async (
  * which it becomes eligible for the normal live-order / "Manage Delivery"
  * flow.
  */
-const acceptOrder = async (orderMasterId: string): Promise<void> => {
+const acceptOrder = async (orderMasterId: string, lat?: number, lng?: number): Promise<void> => {
   const sessionKey = await TokenStorage.getToken();
 
   await apiCall(
     axiosInstance.patch(`/v1/order-master/${orderMasterId}/accept`, null, {
+      params: { lat, lng },
       headers: {
         SessionKey: sessionKey || '',
         'Request-Origin': 'CAPTAIN',

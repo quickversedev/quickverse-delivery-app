@@ -759,12 +759,13 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
      return straightLineDistanceKm * ROAD_DISTANCE_FACTOR;
   };
 
-  const pickupDistance = distanceInKm(partnerCoord, shopCoord);
-  const dropDistance = distanceInKm(shopCoord, customerCoord);
-  const totalDistance =
+  const pickupDistance = order.orderDetails?.pickupDistance ?? distanceInKm(partnerCoord, shopCoord);
+  const dropDistance = order.orderDetails?.dropDistance ?? null;
+  const totalDistance = order.orderDetails?.totalDistance ?? (
     pickupDistance != null && dropDistance != null
       ? pickupDistance + dropDistance
-      : dropDistance ?? pickupDistance;
+      : dropDistance ?? pickupDistance
+  );
 
   // ─── TIME ESTIMATIONS ───
   const pickupEstimatedMinutes = calculateEstimatedTimeMinutes(pickupDistance);
@@ -1446,7 +1447,7 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
     setIsLoading(true);
     try {
       if (config.apiAction === 'acceptOrder') {
-        await deliveryPartnerService.acceptOrder(orderId);
+        await deliveryPartnerService.acceptOrder(orderId, partnerCoord?.lat, partnerCoord?.lng);
         if (componentMountedRef.current) {
           setOrder(prev => ({ ...prev, orderStatus: 'ACCEPTED' }));
         }

@@ -239,7 +239,7 @@ const LiveOrderCard: React.FC<LiveOrderCardProps> = ({
         Number.isFinite(address.latitude) &&
         Number.isFinite(address.longitude),
     ) ?? null;
-  const deliveryDistance = distanceInKm(order.shopDetails, customerLocation);
+  const deliveryDistance = order.orderDetails?.distance ?? null;
   const assignmentDate = parseDateValueLocal(order.assignedAt);
   const assignmentLabel = assignmentDate
     ? (() => {
@@ -418,7 +418,7 @@ const NewOrderRequestCard: React.FC<NewOrderRequestCardProps> = ({
     order.reportedAddresses?.find(
       address => address.latitude != null && address.longitude != null,
     ) ?? null;
-  const deliveryDistance = distanceInKm(order.shopDetails, customerLocation);
+  const deliveryDistance = order.orderDetails?.distance ?? null;
   const assignmentDate = order.assignedAt
     ? (() => {
         const numericValue = Number(order.assignedAt);
@@ -1159,7 +1159,7 @@ const HomeScreen: React.FC = () => {
     if (!orderMasterId) return;
     setOrderActionLoadingId(orderMasterId);
     try {
-      await deliveryPartnerService.acceptOrder(orderMasterId);
+      await deliveryPartnerService.acceptOrder(orderMasterId, currentLocation?.latitude ?? undefined, currentLocation?.longitude ?? undefined);
       await fetchAssignedOrders({ silent: true });
     } catch (error) {
       console.error('Accept order failed', error);
