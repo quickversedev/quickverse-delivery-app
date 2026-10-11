@@ -24,8 +24,19 @@ import deliveryPartnerService from '../services/delivery-partner.service';
 import type {
   DeliveryPartnerOrder,
   DeliveryPartnerStats,
+  OrderEstimate,
   StatsPeriod,
 } from '../services/delivery-partner.service';
+import useOrderEstimates from '../hooks/useOrderEstimates';
+import {
+  CALCULATING_LABEL,
+  EMPTY_LABEL,
+  formatAmount,
+  formatKm,
+  formatRupees,
+  metricsFromEstimate,
+  metricsFromOrder,
+} from '../utils/orderMetrics';
 import websocketService, {
   type OrderActionEvent,
 } from '../services/websocket.service';
@@ -82,11 +93,21 @@ type PartnerStatusType = 'alive' | 'sleeping' | 'dead';
 
 const UNASSIGN_WINDOW_MS = 150_000;
 
+/** Accepted-but-not-picked-up statuses in which the backend still accepts the rider's GPS for the pickup leg. */
+const PICKUP_PENDING_STATUSES = [
+  'ACCEPTED',
+  'PARTNER_ACCEPTED',
+  'ARRIVED_AT_STORE',
+  'READY_FOR_PICKUP',
+];
+
 type LiveOrderCardProps = {
   order: DeliveryPartnerOrder;
   index: number;
   totalLiveOrders: number;
   currentLocation: Coordinate | null;
+  /** Backend estimate, used only while the order's pickup distance is still pending. */
+  estimate?: OrderEstimate | null;
 };
 
 // ──── STATUS MAPPING ─────────────────────────────────────────────────────
@@ -118,6 +139,7 @@ const LiveOrderCard: React.FC<LiveOrderCardProps> = ({
   index,
   totalLiveOrders,
   currentLocation,
+  estimate,
 }) => {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -200,46 +222,6 @@ const LiveOrderCard: React.FC<LiveOrderCardProps> = ({
     };
   })();
 
-  const toRadians = (value: number) => (value * Math.PI) / 180;
-  const distanceInKm = (
-    from: { latitude: number | null; longitude: number | null } | null,
-    to: { latitude: number | null; longitude: number | null } | null,
-  ) => {
-    if (
-      !from ||
-      !to ||
-      to.latitude == null ||
-      to.longitude == null ||
-      !Number.isFinite(to.latitude) ||
-      !Number.isFinite(to.longitude) ||
-      from.latitude == null ||
-      from.longitude == null ||
-      !Number.isFinite(from.latitude) ||
-      !Number.isFinite(from.longitude)
-    ) {
-      return null;
-    }
-    const earthRadiusKm = 6371;
-    const latitudeDelta = toRadians(to.latitude - from.latitude);
-    const longitudeDelta = toRadians(to.longitude - from.longitude);
-    const a =
-      Math.sin(latitudeDelta / 2) ** 2 +
-      Math.cos(toRadians(from.latitude)) *
-        Math.cos(toRadians(to.latitude)) *
-        Math.sin(longitudeDelta / 2) ** 2;
-    return earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  };
-
-  const pickupDistance = distanceInKm(currentLocation, order.shopDetails);
-  const customerLocation =
-    order.reportedAddresses?.find(
-      address =>
-        address.latitude != null &&
-        address.longitude != null &&
-        Number.isFinite(address.latitude) &&
-        Number.isFinite(address.longitude),
-    ) ?? null;
-  const deliveryDistance = order.orderDetails?.distance ?? null;
   const assignmentDate = parseDateValueLocal(order.assignedAt);
   const assignmentLabel = assignmentDate
     ? (() => {
@@ -271,12 +253,6 @@ const LiveOrderCard: React.FC<LiveOrderCardProps> = ({
         })
       | null
   )?.surgeFee;
-  const pickupDistanceLabel =
-    pickupDistance == null ? 'N/A' : `${Number(pickupDistance).toFixed(1)} km`;
-  const deliveryDistanceLabel =
-    deliveryDistance == null
-      ? 'N/A'
-      : `${Number(deliveryDistance).toFixed(1)} km`;
   const tipLabel =
     tipAmount == null ? '₹0.00' : formatCurrencyLocal(Number(tipAmount));
   const surgeLabel =
@@ -289,6 +265,7 @@ const LiveOrderCard: React.FC<LiveOrderCardProps> = ({
       index={index}
       totalOrders={totalLiveOrders}
       currentLocation={currentLocation}
+      estimate={estimate}
       variant="live"
     />
   );
@@ -326,6 +303,8 @@ type NewOrderRequestCardProps = {
   index: number;
   totalOrders: number;
   currentLocation: Coordinate | null;
+  /** Backend estimate for the rider's GPS: used before accept, or after accept while pickup is still pending. */
+  estimate?: OrderEstimate | null;
   variant: 'new' | 'live';
   onAccept?: (order: DeliveryPartnerOrder) => void;
   onReject?: (order: DeliveryPartnerOrder) => void;
@@ -337,6 +316,7 @@ const NewOrderRequestCard: React.FC<NewOrderRequestCardProps> = ({
   index,
   totalOrders,
   currentLocation,
+  estimate,
   variant,
   onAccept,
   onReject,
@@ -382,43 +362,13 @@ const NewOrderRequestCard: React.FC<NewOrderRequestCardProps> = ({
       ? order.orderDetails.orderItem.map(item => item.name).join(', ')
       : null);
 
-  const ROAD_DISTANCE_FACTOR = 1.4;
-
-  const toRadians = (value: number) => (value * Math.PI) / 180;
-  const distanceInKm = (
-    from: { latitude: number | null; longitude: number | null } | null,
-    to: { latitude: number | null; longitude: number | null } | null,
-  ) => {
-    if (
-      !from ||
-      !to ||
-      from.latitude == null ||
-      from.longitude == null ||
-      to.latitude == null ||
-      to.longitude == null
-    ) {
-      return null;
-    }
-    const latitudeDelta = toRadians(to.latitude - from.latitude);
-    const longitudeDelta = toRadians(to.longitude - from.longitude);
-
-    const a =
-      Math.sin(latitudeDelta / 2) ** 2 +
-      Math.cos(toRadians(from.latitude)) *
-        Math.cos(toRadians(to.latitude)) *
-        Math.sin(longitudeDelta / 2) ** 2;
-
-    const straightLineDistanceKm =
-      6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-    return straightLineDistanceKm * ROAD_DISTANCE_FACTOR;
-  };
-  const pickupDistance = distanceInKm(currentLocation, order.shopDetails);
-  const customerLocation =
-    order.reportedAddresses?.find(
-      address => address.latitude != null && address.longitude != null,
-    ) ?? null;
-  const deliveryDistance = order.orderDetails?.distance ?? null;
+  // Distance and earnings are never calculated in the app: accepted orders show the backend values,
+  // orders not accepted yet show the backend estimate for the rider's GPS.
+  const metrics =
+    variant === 'live'
+      ? metricsFromOrder(order, estimate)
+      : metricsFromEstimate(estimate, order.dropDistance);
+  const pendingLabel = metrics.pending ? CALCULATING_LABEL : EMPTY_LABEL;
   const assignmentDate = order.assignedAt
     ? (() => {
         const numericValue = Number(order.assignedAt);
@@ -511,10 +461,11 @@ const NewOrderRequestCard: React.FC<NewOrderRequestCardProps> = ({
           </Text>
         </View>
         <View style={styles.assignedEarningsWrap}>
-          <Text style={styles.assignedEarnings}>
-            {order?.riderEarnings != null
-              ? formatCurrencyLocal(order.riderEarnings)
-              : 'N/A'}
+          <Text
+            style={styles.assignedEarnings}
+            numberOfLines={1}
+            adjustsFontSizeToFit>
+            {formatRupees(metrics.earnings, pendingLabel)}
           </Text>
           <Text style={styles.assignedEarningsLabel}>Your Earnings</Text>
         </View>
@@ -549,28 +500,33 @@ const NewOrderRequestCard: React.FC<NewOrderRequestCardProps> = ({
       <View style={styles.assignedMetricsRow}>
         <View style={styles.assignedMetric}>
           <MapPin size={12} color="#0E6DFD" />
-          <Text style={styles.assignedMetricValue}>
-            {pickupDistance != null ? `${pickupDistance.toFixed(1)} km` : 'N/A'}
+          <Text
+            style={styles.assignedMetricValue}
+            numberOfLines={1}
+            adjustsFontSizeToFit>
+            {formatKm(metrics.pickupKm, pendingLabel)}
           </Text>
           <Text style={styles.assignedMetricLabel}>Pick up</Text>
         </View>
         <View style={styles.assignedMetricDivider} />
         <View style={styles.assignedMetric}>
           <Route size={12} color="#F97316" />
-          <Text style={styles.assignedMetricValue}>
-            {deliveryDistance != null
-              ? `${deliveryDistance.toFixed(1)} km`
-              : 'N/A'}
+          <Text
+            style={styles.assignedMetricValue}
+            numberOfLines={1}
+            adjustsFontSizeToFit>
+            {formatKm(metrics.dropKm, pendingLabel)}
           </Text>
-          <Text style={styles.assignedMetricLabel}>Delivery</Text>
+          <Text style={styles.assignedMetricLabel}>Drop</Text>
         </View>
         <View style={styles.assignedMetricDivider} />
         <View style={styles.assignedMetric}>
           <Text style={styles.assignedMetricCurrency}>₹</Text>
-          <Text style={styles.assignedMetricValue}>
-            {order.finance?.commission != null
-              ? order.finance.commission.toFixed(2)
-              : '-'}
+          <Text
+            style={styles.assignedMetricValue}
+            numberOfLines={1}
+            adjustsFontSizeToFit>
+            {formatAmount(metrics.perKm, pendingLabel)}
           </Text>
           <Text style={styles.assignedMetricLabel}>Per km</Text>
         </View>
@@ -1102,6 +1058,44 @@ const HomeScreen: React.FC = () => {
       isOrderLive(o),
   );
   const liveOrderIds = new Set(liveOrders.map(o => o.id || o.orderId));
+
+  // Backend distance/earnings estimate for orders not accepted yet, and for accepted ones whose pickup
+  // distance is still pending. Orders with final backend values are not requested.
+  const estimateOrderIds = [...newOrderRequests, ...liveOrders]
+    .filter(o => o.locationPending)
+    .map(o => o.orderId);
+  const orderEstimates = useOrderEstimates(estimateOrderIds, currentLocation);
+
+  // Accepted orders whose pickup distance the backend could not capture on accept (the app had no GPS yet):
+  // send the GPS as soon as it is available, then reload so every card shows the backend's fresh values.
+  const pickupCaptureInFlightRef = useRef(false);
+  // Last GPS cell (~100 m) tried per order, so an order the backend still cannot complete is not re-sent in a loop.
+  const pickupCaptureTriedRef = useRef<Map<string, string>>(new Map());
+  useEffect(() => {
+    if (!currentLocation || pickupCaptureInFlightRef.current) return;
+    const gpsKey = `${currentLocation.latitude.toFixed(3)},${currentLocation.longitude.toFixed(3)}`;
+    const needsPickup = liveOrders.filter(
+      o =>
+        o.locationPending &&
+        PICKUP_PENDING_STATUSES.includes(o.orderStatus?.toUpperCase() ?? '') &&
+        pickupCaptureTriedRef.current.get(o.id) !== gpsKey,
+    );
+    if (needsPickup.length === 0) return;
+    pickupCaptureInFlightRef.current = true;
+    needsPickup.forEach(o => pickupCaptureTriedRef.current.set(o.id, gpsKey));
+    Promise.all(
+      needsPickup.map(o =>
+        deliveryPartnerService
+          .updatePickupLocation(o.id, currentLocation.latitude, currentLocation.longitude)
+          .catch(error => console.warn('Pickup location update failed', error)),
+      ),
+    )
+      .then(() => fetchAssignedOrders({ silent: true }))
+      .finally(() => {
+        pickupCaptureInFlightRef.current = false;
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentLocation, orders]);
 
   const pastOrders = clearOrders.filter(
     o =>
@@ -2595,6 +2589,7 @@ const HomeScreen: React.FC = () => {
                     index={index}
                     totalOrders={newOrderRequests.length}
                     currentLocation={currentLocation}
+                    estimate={orderEstimates[order.orderId]}
                     variant="new"
                     isLoading={
                       orderActionLoadingId === (order.id || order.orderId)
@@ -2612,6 +2607,7 @@ const HomeScreen: React.FC = () => {
                     index={index}
                     totalLiveOrders={liveOrders.length}
                     currentLocation={currentLocation}
+                    estimate={orderEstimates[order.orderId]}
                   />
                 ))}
 

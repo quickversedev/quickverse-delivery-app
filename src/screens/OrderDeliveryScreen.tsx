@@ -40,7 +40,17 @@ import type {
   DeliveryPartnerOrder,
   ReportedAddress,
 } from '../services/delivery-partner.service';
-import deliveryPartnerService from '../services/delivery-partner.service';
+import deliveryPartnerService, {
+  type OrderDistanceSnapshot,
+} from '../services/delivery-partner.service';
+import useOrderEstimates from '../hooks/useOrderEstimates';
+import {
+  CALCULATING_LABEL,
+  EMPTY_LABEL,
+  formatKm,
+  formatRupees,
+  metricsFromOrder,
+} from '../utils/orderMetrics';
 import usePricingStore from '../store/pricingStore';
 import { FONT_FAMILY } from '../theme/typography';
 import type { ServiceType } from '../types/pricing';
@@ -98,6 +108,14 @@ interface ParsedAddress {
 }
 
 // ─── TIME CALCULATION UTILITIES ───
+/** Statuses in which the backend still accepts the rider's GPS for the pickup leg (before pickup). */
+const PICKUP_PENDING_STATUSES = [
+  'ACCEPTED',
+  'PARTNER_ACCEPTED',
+  'ARRIVED_AT_STORE',
+  'READY_FOR_PICKUP',
+];
+
 const calculateEstimatedTimeMinutes = (
   distanceKm: number | null,
 ): number | null => {
@@ -686,6 +704,43 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
     'ACCEPTED'
   ).toUpperCase();
   const config = STAGE_CONFIG[orderStatus] ?? STAGE_CONFIG['ACCEPTED'];
+
+  /** Takes the backend's latest distance + earnings values as they are (no calculation in the app). */
+  const applyDistanceSnapshot = useCallback((snapshot: OrderDistanceSnapshot) => {
+    if (!componentMountedRef.current) return;
+    setOrder(prev => ({
+      ...prev,
+      pickupDistance: snapshot.pickupDistance,
+      dropDistance: snapshot.dropDistance,
+      totalDistance: snapshot.totalDistance,
+      locationPending: snapshot.locationPending,
+      riderEarnings: snapshot.riderEarnings ?? prev.riderEarnings,
+    }));
+  }, []);
+
+  // The order was handed over from the list, so reload its distance/earnings from the backend on open.
+  useEffect(() => {
+    deliveryPartnerService
+      .getOrderDistanceSnapshot(order.id)
+      .then(applyDistanceSnapshot)
+      .catch(error => console.warn('Order distance snapshot unavailable:', error));
+  }, [order.id, applyDistanceSnapshot]);
+
+  // The backend had no pickup distance (no GPS when the order was accepted): send the GPS as soon as it is
+  // available. The backend completes pickup/total distance and earnings once, before pickup, and returns them.
+  const pickupCaptureGpsKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!partnerCoord || !order.locationPending || !PICKUP_PENDING_STATUSES.includes(orderStatus)) {
+      return;
+    }
+    const gpsKey = `${partnerCoord.lat.toFixed(3)},${partnerCoord.lng.toFixed(3)}`;
+    if (pickupCaptureGpsKeyRef.current === gpsKey) return;
+    pickupCaptureGpsKeyRef.current = gpsKey;
+    deliveryPartnerService
+      .updatePickupLocation(order.id, partnerCoord.lat, partnerCoord.lng)
+      .then(applyDistanceSnapshot)
+      .catch(error => console.warn('Pickup location update failed:', error));
+  }, [partnerCoord, order.locationPending, order.id, orderStatus, applyDistanceSnapshot]);
   console.log('Normalized Order Status : ', orderStatus);
 
   const customerAddress = parseCustomerAddress(
@@ -738,34 +793,19 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
           lng: Number(reportedCustomerCoord.longitude),
         }
       : null);
-  const ROAD_DISTANCE_FACTOR = 1.4;
-
-  const distanceInKm = (
-    from: CoordinateData | null,
-    to: CoordinateData | null,
-  ): number | null => {
-    if (!from || !to) return null;
-    const toRadians = (value: number) => (value * Math.PI) / 180;
-    const latitudeDelta = toRadians(to.lat - from.lat);
-    const longitudeDelta = toRadians(to.lng - from.lng);
-    const a =
-      Math.sin(latitudeDelta / 2) ** 2 +
-      Math.cos(toRadians(from.lat)) *
-        Math.cos(toRadians(to.lat)) *
-        Math.sin(longitudeDelta / 2) ** 2;
-     const straightLineDistanceKm =
-       6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-     return straightLineDistanceKm * ROAD_DISTANCE_FACTOR;
-  };
-
-  const pickupDistance = order.orderDetails?.pickupDistance ?? distanceInKm(partnerCoord, shopCoord);
-  const dropDistance = order.orderDetails?.dropDistance ?? null;
-  const totalDistance = order.orderDetails?.totalDistance ?? (
-    pickupDistance != null && dropDistance != null
-      ? pickupDistance + dropDistance
-      : dropDistance ?? pickupDistance
+  // ─── DISTANCE & EARNINGS (backend values; the app does not calculate them) ───
+  // After accept the order carries the backend's pickup / drop / total distance and earnings. While the backend
+  // is still waiting for the rider's GPS (locationPending) the live backend estimate is used instead.
+  const orderEstimates = useOrderEstimates(
+    order.locationPending ? [order.orderId] : [],
+    partnerCoord
+      ? { latitude: partnerCoord.lat, longitude: partnerCoord.lng }
+      : null,
   );
+  const metrics = metricsFromOrder(order, orderEstimates[order.orderId]);
+  const pickupDistance = metrics.pickupKm;
+  const dropDistance = metrics.dropKm;
+  const metricPendingLabel = metrics.pending ? CALCULATING_LABEL : EMPTY_LABEL;
 
   // ─── TIME ESTIMATIONS ───
   const pickupEstimatedMinutes = calculateEstimatedTimeMinutes(pickupDistance);
@@ -786,17 +826,6 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
     reachStoreTotalEstimatedMinutes,
     reachStoreElapsedMs,
   );
-
-  const displayDistance = (distance: number | null) =>
-    distance == null ? 'N/A' : `${distance.toFixed(1)} km`;
-  const pickupDistanceLabel =
-    pickupDistance == null && partnerCoord == null
-      ? 'Locating...'
-      : displayDistance(pickupDistance);
-  const totalDistanceLabel =
-    totalDistance == null && partnerCoord == null
-      ? 'Locating...'
-      : displayDistance(totalDistance);
 
   const totalBillAmount =
     order.finance?.payableAmount ??
@@ -1451,6 +1480,11 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
         if (componentMountedRef.current) {
           setOrder(prev => ({ ...prev, orderStatus: 'ACCEPTED' }));
         }
+        // Take the distances/earnings the backend saved on accept instead of keeping the pre-accept values.
+        await deliveryPartnerService
+          .getOrderDistanceSnapshot(orderId)
+          .then(applyDistanceSnapshot)
+          .catch(error => console.warn('Order distance snapshot unavailable:', error));
       } else if (config.apiAction === 'arriveStore') {
         await deliveryPartnerService.arriveAtStore(orderId);
         if (componentMountedRef.current) {
@@ -2352,23 +2386,23 @@ const OrderDeliveryScreen: React.FC<Props> = ({ route, navigation }) => {
           <View style={s.orderSummaryMetrics}>
             <View style={s.metric}>
               <Text style={s.metricValue}>
-                {formatCurrency(order?.riderEarnings ?? 0)}
+                {formatRupees(metrics.earnings, metricPendingLabel)}
               </Text>
               <Text style={s.metricLabel}>Earnings</Text>
             </View>
             <View style={s.metricDivider} />
             <View style={s.metric}>
-              <Text style={s.metricValue}>{pickupDistanceLabel}</Text>
+              <Text style={s.metricValue}>{formatKm(pickupDistance, metricPendingLabel)}</Text>
               <Text style={s.metricLabel}>Pickup</Text>
             </View>
             <View style={s.metricDivider} />
             <View style={s.metric}>
-              <Text style={s.metricValue}>{displayDistance(dropDistance)}</Text>
+              <Text style={s.metricValue}>{formatKm(dropDistance, metricPendingLabel)}</Text>
               <Text style={s.metricLabel}>Drop</Text>
             </View>
             <View style={s.metricDivider} />
             <View style={s.metric}>
-              <Text style={s.metricValue}>{totalDistanceLabel}</Text>
+              <Text style={s.metricValue}>{formatKm(metrics.totalKm, metricPendingLabel)}</Text>
               <Text style={s.metricLabel}>Total Dist</Text>
             </View>
           </View>

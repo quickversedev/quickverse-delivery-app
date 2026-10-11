@@ -79,7 +79,17 @@ export type DeliveryPartnerOrder = {
   shopDetails: DeliveryPartnerShopDetails | null;
   customerAddressId: string | null;
   reportedAddresses: ReportedAddress[] | null;
+  /**
+   * Rider earnings as calculated by the backend. While `locationPending` is true this is only a
+   * drop-distance estimate, so screens must not show it as the final amount.
+   */
   riderEarnings: number;
+  /** Backend distances (km); pickup/total stay null until the rider's GPS was captured. */
+  pickupDistance: number | null;
+  dropDistance: number | null;
+  totalDistance: number | null;
+  /** True while the pickup leg is unknown, i.e. total distance / earnings are not final. */
+  locationPending: boolean;
 };
 
 export type DeliveryPartnerOrderItem = {
@@ -118,6 +128,29 @@ export type DeliveryPartnerOrderDetails = {
   dropDistance: number | null;
   pickupDistance: number | null;
   totalDistance: number | null;
+  locationPending?: boolean;
+};
+
+/** Distance + earnings fields the backend refreshes after accept (taken as-is, never recalculated in the app). */
+export type OrderDistanceSnapshot = {
+  pickupDistance: number | null;
+  dropDistance: number | null;
+  totalDistance: number | null;
+  riderEarnings: number | null;
+  locationPending: boolean;
+};
+
+/**
+ * Backend estimate for an order the rider has not accepted yet, calculated from the rider's GPS with the
+ * admin earnings config. Pickup/total/earning are null while `locationPending` is true.
+ */
+export type OrderEstimate = {
+  orderId: string;
+  pickupDistance: number | null;
+  dropDistance: number | null;
+  totalDistance: number | null;
+  estimatedEarning: number | null;
+  locationPending: boolean;
 };
 
 export type DeliveryPartnerShopAddress = {
@@ -400,6 +433,29 @@ const updateNotificationSettings = async (
   );
 };
 
+/** Number from a backend value, or null when missing / not numeric (never 0 for "unknown"). */
+const toNumberOrNull = (value: unknown): number | null => {
+  if (value == null || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+/**
+ * Distance field from the order. The backend sends these both on the order itself and inside
+ * `orderDetails` (list API), and only on the order itself for the single-order API, so both are read.
+ */
+const readOrderDistance = (
+  order: any,
+  key: 'pickupDistance' | 'dropDistance' | 'totalDistance',
+): number | null =>
+  toNumberOrNull(order?.orderDetails?.[key]) ?? toNumberOrNull(order?.[key]);
+
+const readLocationPending = (order: any): boolean => {
+  const flag = order?.orderDetails?.locationPending ?? order?.locationPending;
+  // Older backends do not send the flag: pickup being unknown is the same condition.
+  return typeof flag === 'boolean' ? flag : readOrderDistance(order, 'pickupDistance') == null;
+};
+
 const normalizePartnerOrder = (order: any): DeliveryPartnerOrder => ({
   id: String(order?.id ?? ''),
   assignedAt: order?.assignedAt ? String(order.assignedAt) : null,
@@ -451,6 +507,10 @@ const normalizePartnerOrder = (order: any): DeliveryPartnerOrder => ({
   customerAddressId: order?.orderDetails?.customerAddressId || null,
   reportedAddresses: (order?.orderDetails?.reportedAddresses) || [],
   riderEarnings: typeof order?.riderEarnings === 'number' ? order.riderEarnings : (typeof order?.finance?.riderEarnings === 'number' ? order.finance.riderEarnings : (typeof order?.orderDetails?.finance?.riderEarnings === 'number' ? order.orderDetails.finance.riderEarnings : 0)),
+  pickupDistance: readOrderDistance(order, 'pickupDistance'),
+  dropDistance: readOrderDistance(order, 'dropDistance'),
+  totalDistance: readOrderDistance(order, 'totalDistance'),
+  locationPending: readLocationPending(order),
   orderDetails: order?.orderDetails
     ? {
         orderId: String(order.orderDetails?.orderId ?? order?.orderId ?? ''),
@@ -548,15 +608,10 @@ const normalizePartnerOrder = (order: any): DeliveryPartnerOrder => ({
         paymentProofURLImageUrl: order.orderDetails?.paymentProofURLImageUrl
           ? String(order.orderDetails.paymentProofURLImageUrl)
           : null,
-        dropDistance: typeof order.orderDetails?.dropDistance === 'number'
-          ? order.orderDetails.dropDistance
-          : (order.orderDetails?.dropDistance ? Number(order.orderDetails.dropDistance) : null),
-        pickupDistance: typeof order.orderDetails?.pickupDistance === 'number'
-          ? order.orderDetails.pickupDistance
-          : (order.orderDetails?.pickupDistance ? Number(order.orderDetails.pickupDistance) : null),
-        totalDistance: typeof order.orderDetails?.totalDistance === 'number'
-          ? order.orderDetails.totalDistance
-          : (order.orderDetails?.totalDistance ? Number(order.orderDetails.totalDistance) : null),
+        dropDistance: readOrderDistance(order, 'dropDistance'),
+        pickupDistance: readOrderDistance(order, 'pickupDistance'),
+        totalDistance: readOrderDistance(order, 'totalDistance'),
+        locationPending: readLocationPending(order),
       }
     : null,
   shopDetails: order?.shopDetails
@@ -785,6 +840,93 @@ const acceptOrder = async (orderMasterId: string, lat?: number, lng?: number): P
       validateStatus: status => status >= 200 && status < 400,
     }),
   );
+};
+
+/**
+ * Latest distance + earnings the backend holds for an order the rider has already accepted.
+ * Used so the delivery screen shows backend values instead of anything calculated in the app.
+ */
+const getOrderDistanceSnapshot = async (
+  orderMasterId: string,
+): Promise<OrderDistanceSnapshot> => {
+  const sessionKey = await TokenStorage.getToken();
+
+  const data = await apiCall<any>(
+    axiosInstance.get(`/v1/order-master/${orderMasterId}`, {
+      headers: {
+        SessionKey: sessionKey || '',
+        'Request-Origin': 'CAPTAIN',
+      },
+      // This endpoint answers 302 (FOUND) with the order in the body.
+      validateStatus: status => status >= 200 && status < 400,
+    }),
+  );
+  return normalizeDistanceSnapshot(data);
+};
+
+/**
+ * Sends the rider's GPS for an accepted order whose pickup distance is still missing. The backend fills the
+ * pickup/total distance (only before pickup, only once) and returns the fresh values.
+ */
+const updatePickupLocation = async (
+  orderMasterId: string,
+  lat: number,
+  lng: number,
+): Promise<OrderDistanceSnapshot> => {
+  const sessionKey = await TokenStorage.getToken();
+
+  const data = await apiCall<any>(
+    axiosInstance.patch(`/v1/order-master/${orderMasterId}/update-location`, null, {
+      params: { lat, lng },
+      headers: {
+        SessionKey: sessionKey || '',
+        'Request-Origin': 'CAPTAIN',
+      },
+      validateStatus: status => status >= 200 && status < 400,
+    }),
+  );
+  return normalizeDistanceSnapshot(data);
+};
+
+const normalizeDistanceSnapshot = (data: any): OrderDistanceSnapshot => ({
+  pickupDistance: readOrderDistance(data, 'pickupDistance'),
+  dropDistance: readOrderDistance(data, 'dropDistance'),
+  totalDistance: readOrderDistance(data, 'totalDistance'),
+  riderEarnings: toNumberOrNull(data?.riderEarnings),
+  locationPending: readLocationPending(data),
+});
+
+/**
+ * Pre-accept distance + earnings for the given orders from the rider's GPS. The backend applies the road
+ * factor and the admin earnings config, so the app never carries a formula.
+ */
+const getOrderEstimates = async (
+  orderIds: string[],
+  lat: number,
+  lng: number,
+): Promise<OrderEstimate[]> => {
+  const sessionKey = await TokenStorage.getToken();
+
+  const data = await apiCall<any>(
+    axiosInstance.post(
+      '/quickVerse/v3/delivery-partner/order-estimates',
+      { orderIds, lat, lng },
+      {
+        headers: {
+          SessionKey: sessionKey || '',
+          'Request-Origin': 'TRANSPORTER',
+        },
+      },
+    ),
+  );
+  return (Array.isArray(data) ? data : []).map((item: any) => ({
+    orderId: String(item?.orderId ?? ''),
+    pickupDistance: toNumberOrNull(item?.pickupDistance),
+    dropDistance: toNumberOrNull(item?.dropDistance),
+    totalDistance: toNumberOrNull(item?.totalDistance),
+    estimatedEarning: toNumberOrNull(item?.estimatedEarning),
+    locationPending: item?.locationPending !== false,
+  }));
 };
 
 /**
@@ -1043,6 +1185,9 @@ const deliveryPartnerService = {
   getAssignedOrdersByPartnerId,
   updateAssignedOrderStatus,
   acceptOrder,
+  getOrderDistanceSnapshot,
+  updatePickupLocation,
+  getOrderEstimates,
   rejectOrder,
   createReportedAddress,
   getReportedAddressesByCustomer,

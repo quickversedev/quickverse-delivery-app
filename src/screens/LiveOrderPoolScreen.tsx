@@ -16,6 +16,7 @@ import { Zap, RefreshCw } from 'lucide-react-native';
 import { FONT_FAMILY } from '../theme/typography';
 import useAuthStore from '../hooks/useAuthStore';
 import usePoolOrders from '../hooks/usePoolOrders';
+import useOrderEstimates from '../hooks/useOrderEstimates';
 import shiftService from '../services/shift.service';
 import deliveryPartnerService from '../services/delivery-partner.service';
 import OrderPoolCard from '../components/OrderPoolCard';
@@ -49,6 +50,12 @@ const LiveOrderPoolScreen: React.FC = () => {
   const { orders, loading, claiming, claimOrder, refresh } = usePoolOrders(
     isOnline,
     partnerProfile?.regionId,
+  );
+
+  // Backend pickup/drop/total distance and earnings for every pool order, from the rider's current GPS.
+  const orderEstimates = useOrderEstimates(
+    orders.map(o => o.orderId),
+    currentLocation,
   );
 
   // Fetch active shift on mount
@@ -217,7 +224,7 @@ const LiveOrderPoolScreen: React.FC = () => {
               index={index}
               totalOrders={orders.length}
               isClaiming={claiming === item.poolId}
-              currentLocation={currentLocation}
+              estimate={orderEstimates[item.orderId]}
               onAccept={() => handleAccept(item)}
             />
           )}

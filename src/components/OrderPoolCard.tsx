@@ -10,11 +10,15 @@ import {
 import { MapPin, Route, Store } from 'lucide-react-native';
 import { FONT_FAMILY } from '../theme/typography';
 import type { PoolOrder } from '../types/pool.types';
-
-interface Coordinates {
-  latitude: number | null;
-  longitude: number | null;
-}
+import type { OrderEstimate } from '../services/delivery-partner.service';
+import {
+  CALCULATING_LABEL,
+  EMPTY_LABEL,
+  formatAmount,
+  formatKm,
+  formatRupees,
+  metricsFromEstimate,
+} from '../utils/orderMetrics';
 
 /**
  * The /order-pool endpoint returns the flat PoolOrder fields, but in
@@ -46,37 +50,10 @@ interface OrderPoolCardProps {
   index: number;
   totalOrders: number;
   isClaiming: boolean;
-  currentLocation?: Coordinates | null;
+  /** Backend distance/earnings estimate for the rider's GPS (undefined until the backend answers). */
+  estimate?: OrderEstimate | null;
   onAccept: () => void;
 }
-
-const toRadians = (value: number) => (value * Math.PI) / 180;
-
-const distanceInKm = (from: Coordinates | null, to: Coordinates | null) => {
-  if (
-    !from ||
-    !to ||
-    from.latitude == null ||
-    from.longitude == null ||
-    to.latitude == null ||
-    to.longitude == null ||
-    !Number.isFinite(from.latitude) ||
-    !Number.isFinite(from.longitude) ||
-    !Number.isFinite(to.latitude) ||
-    !Number.isFinite(to.longitude)
-  ) {
-    return null;
-  }
-  const earthRadiusKm = 6371;
-  const dLat = toRadians(to.latitude - from.latitude);
-  const dLon = toRadians(to.longitude - from.longitude);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRadians(from.latitude)) *
-      Math.cos(toRadians(to.latitude)) *
-      Math.sin(dLon / 2) ** 2;
-  return earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-};
 
 const formatCurrencyLocal = (amount: number | null | undefined) =>
   amount == null || !Number.isFinite(amount)
@@ -120,7 +97,7 @@ const OrderPoolCard: React.FC<OrderPoolCardProps> = ({
   index,
   totalOrders,
   isClaiming,
-  currentLocation,
+  estimate,
   onAccept,
 }) => {
   const [secondsLeft, setSecondsLeft] = useState(() =>
@@ -141,26 +118,11 @@ const OrderPoolCard: React.FC<OrderPoolCardProps> = ({
   const secs = secondsLeft % 60;
   const timerText = `${mins}:${String(secs).padStart(2, '0')}`;
 
-  const vendorLocation: Coordinates = {
-    latitude: order.vendorLatitude,
-    longitude: order.vendorLongitude,
-  };
-  const pickupDistance = distanceInKm(currentLocation ?? null, vendorLocation);
-  const pickupDistanceLabel =
-    order.estimatedDistanceKm != null
-      ? `${order.estimatedDistanceKm.toFixed(1)} km`
-      : pickupDistance != null
-      ? `${pickupDistance.toFixed(1)} km`
-      : 'N/A';
+  // Distance and earnings come from the backend estimate (road factor and admin earnings config applied there).
+  const metrics = metricsFromEstimate(estimate, order.estimatedDistanceKm);
+  const pendingLabel = metrics.pending ? CALCULATING_LABEL : EMPTY_LABEL;
 
   const customer = parseCustomerAddress(order.customerAddress);
-  const dropLocation: Coordinates = {
-    latitude: customer.latitude,
-    longitude: customer.longitude,
-  };
-  const deliveryDistance = distanceInKm(vendorLocation, dropLocation);
-  const deliveryDistanceLabel =
-    deliveryDistance != null ? `${deliveryDistance.toFixed(1)} km` : 'N/A';
 
   const itemCount = order.order?.totalItemCount ?? 0;
   const orderDescription =
@@ -230,8 +192,11 @@ const OrderPoolCard: React.FC<OrderPoolCardProps> = ({
           </Text>
         </View>
         <View style={styles.assignedEarningsWrap}>
-          <Text style={styles.assignedEarnings}>
-            {formatCurrencyLocal(order.estimatedEarning)}
+          <Text
+            style={styles.assignedEarnings}
+            numberOfLines={1}
+            adjustsFontSizeToFit>
+            {formatRupees(metrics.earnings, pendingLabel)}
           </Text>
           <Text style={styles.assignedEarningsLabel}>Est. Earning</Text>
         </View>
@@ -264,24 +229,33 @@ const OrderPoolCard: React.FC<OrderPoolCardProps> = ({
       <View style={styles.assignedMetricsRow}>
         <View style={styles.assignedMetric}>
           <MapPin size={12} color="#0E6DFD" />
-          <Text style={styles.assignedMetricValue}>{pickupDistanceLabel}</Text>
+          <Text
+            style={styles.assignedMetricValue}
+            numberOfLines={1}
+            adjustsFontSizeToFit>
+            {formatKm(metrics.pickupKm, pendingLabel)}
+          </Text>
           <Text style={styles.assignedMetricLabel}>Pick up</Text>
         </View>
         <View style={styles.assignedMetricDivider} />
         <View style={styles.assignedMetric}>
           <Route size={12} color="#F97316" />
-          <Text style={styles.assignedMetricValue}>
-            {deliveryDistanceLabel}
+          <Text
+            style={styles.assignedMetricValue}
+            numberOfLines={1}
+            adjustsFontSizeToFit>
+            {formatKm(metrics.dropKm, pendingLabel)}
           </Text>
-          <Text style={styles.assignedMetricLabel}>Delivery</Text>
+          <Text style={styles.assignedMetricLabel}>Drop</Text>
         </View>
         <View style={styles.assignedMetricDivider} />
         <View style={styles.assignedMetric}>
           <Text style={styles.assignedMetricCurrency}>₹</Text>
-          <Text style={styles.assignedMetricValue}>
-            {order.finance?.commission != null
-              ? order.finance.commission.toFixed(2)
-              : '-'}
+          <Text
+            style={styles.assignedMetricValue}
+            numberOfLines={1}
+            adjustsFontSizeToFit>
+            {formatAmount(metrics.perKm, pendingLabel)}
           </Text>
           <Text style={styles.assignedMetricLabel}>Per km</Text>
         </View>
