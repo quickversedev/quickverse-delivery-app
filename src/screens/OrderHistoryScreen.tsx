@@ -31,6 +31,10 @@ type OrderHistoryScreenNavigationProp = NativeStackNavigationProp<RootStackParam
 
 type FilterPeriod = 'today' | 'last7' | 'last14';
 
+// The backend filters on India dates, and toISOString() is UTC (it gives "yesterday" between 12:00 and 5:30 AM IST).
+const toIstDateString = (date: Date) =>
+  new Date(date.getTime() + 5.5 * 60 * 60 * 1000).toISOString().split('T')[0];
+
 const OrderHistoryScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<OrderHistoryScreenNavigationProp>();
@@ -57,18 +61,18 @@ const OrderHistoryScreen: React.FC = () => {
       // Calculate dates based on period
       const today = new Date();
       let fromDateStr = '';
-      let toDateStr = today.toISOString().split('T')[0];
+      let toDateStr = toIstDateString(today);
 
       if (currentPeriod === 'today') {
-        fromDateStr = today.toISOString().split('T')[0];
+        fromDateStr = toIstDateString(today);
       } else if (currentPeriod === 'last7') {
         const d = new Date();
         d.setDate(d.getDate() - 7);
-        fromDateStr = d.toISOString().split('T')[0];
+        fromDateStr = toIstDateString(d);
       } else if (currentPeriod === 'last14') {
         const d = new Date();
         d.setDate(d.getDate() - 14);
-        fromDateStr = d.toISOString().split('T')[0];
+        fromDateStr = toIstDateString(d);
       }
 
       const res = await deliveryPartnerService.getDeliveryPartnerHistory(partnerId, currentPage, 10, fromDateStr, toDateStr);
@@ -157,27 +161,45 @@ const OrderHistoryScreen: React.FC = () => {
 
   const renderOrderCard = ({ item }: { item: any }) => {
     const shopName = item?.orderDetails?.shopDetails?.name || 'Unknown Store';
-    // Use deliveryFee if riderEarnings is not yet added, fallback to 0
-    const riderEarnings = item?.orderDetails?.riderEarnings || item?.orderDetails?.deliveryFee || 0;
     const orderId = item?.orderId || 'N/A';
 
     // Formatting Date
     const createdAt = item?.createdAt || item?.orderDetails?.creationTime;
     let timeStr = '';
     if (createdAt) {
-      const d = new Date(createdAt);
-      timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      // The backend sends epoch milliseconds as a string ("1760...") and new Date(string) does not read those.
+      const d = /^\d+$/.test(String(createdAt)) ? new Date(Number(createdAt)) : new Date(createdAt);
+      if (!Number.isNaN(d.getTime())) {
+        timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      }
     }
 
     const customerName = item?.orderDetails?.customerName || 'Customer';
     const customerMobile = item?.orderDetails?.customerMobile || '';
     const status = item?.orderStatus || 'Unknown';
     const isDelivered = status.toUpperCase() === 'DELIVERED';
+    // "PARTNER_ASSIGNED" -> "Partner Assigned" (shorter, so the pill leaves room for the shop name)
+    const statusLabel = status
+      .replace(/_/g, ' ')
+      .toLowerCase()
+      .replace(/\b\w/g, (c: string) => c.toUpperCase());
 
     // Stats (placeholders if not available)
-    const distance = item?.orderDetails?.distance || '0.0 mi';
+    // Total distance (pickup + drop) from the backend, the same distance the earnings were paid on.
+    // Orders from before pickup distance was recorded have no total, so they show their drop distance as before.
+    const totalKm = Number(item?.orderDetails?.totalDistance ?? item?.totalDistance);
+    const fallbackKm = Number(item?.orderDetails?.dropDistance ?? item?.orderDetails?.distance);
+    const hasTotal = Number.isFinite(totalKm) && totalKm > 0;
+    const distanceKm = hasTotal ? totalKm : fallbackKm;
+    const distance = Number.isFinite(distanceKm) && distanceKm > 0 ? `${distanceKm.toFixed(1)} km` : '--';
+    // Say which distance this is, so a drop-only value is never read as the total.
+    const distanceLabel = hasTotal ? 'Total Distance' : 'Drop Distance';
     const duration = item?.orderDetails?.duration || '0 mins';
     const tip = item?.orderDetails?.tip || 0;
+
+    // Rider's earnings for this order as calculated by the backend; shown for delivered orders that have an amount.
+    const backendEarnings = Number(item?.orderDetails?.riderEarnings ?? item?.riderEarnings);
+    const showEarningsStrip = isDelivered && Number.isFinite(backendEarnings) && backendEarnings > 0;
 
     return (
       <View style={styles.orderCard}>
@@ -187,36 +209,45 @@ const OrderHistoryScreen: React.FC = () => {
             <Store size={20} color="#1D6BFC" />
           </View>
           <View style={styles.storeInfoWrap}>
-            <Text style={styles.storeName} numberOfLines={1}>{shopName}</Text>
+            <Text style={styles.storeName} numberOfLines={2}>{shopName}</Text>
             <Text style={styles.dateTimeText}>
-              {timeStr} • Order #{String(orderId).substring(String(orderId).length - 4)}
+              {timeStr ? `${timeStr} • ` : ''}Order #{orderId}
             </Text>
-            {/* Customer Details Row */}
-            <View style={styles.customerRow}>
-              <UserIcon size={12} color="#64748B" />
-              <Text style={styles.customerText} numberOfLines={1}>
-                {customerName}
-              </Text>
-              {customerMobile ? (
-                <>
-                  <Text style={styles.dotSeparator}>•</Text>
-                  <Phone size={12} color="#64748B" />
-                  <Text style={styles.customerText}>{customerMobile}</Text>
-                </>
-              ) : null}
-            </View>
           </View>
 
           <View style={styles.rightInfoWrap}>
-            <Text style={styles.earningsText}>₹{Number(riderEarnings).toFixed(2)}</Text>
             <View style={[styles.statusPill, isDelivered ? styles.statusPillSuccess : {}]}>
               <View style={[styles.statusDot, isDelivered ? styles.statusDotSuccess : {}]} />
               <Text style={[styles.statusText, isDelivered ? styles.statusTextSuccess : {}]}>
-                {status}
+                {statusLabel}
               </Text>
             </View>
           </View>
         </View>
+
+        {/* Customer details: full card width, so the name and phone number are never cut */}
+        <View style={styles.customerRowFull}>
+          <UserIcon size={12} color="#64748B" />
+          <Text style={styles.customerText} numberOfLines={1}>
+            {customerName}
+          </Text>
+          {customerMobile ? (
+            <>
+              <Text style={styles.dotSeparator}>•</Text>
+              <Phone size={12} color="#64748B" />
+              <Text style={styles.customerPhoneText}>{customerMobile}</Text>
+            </>
+          ) : null}
+        </View>
+
+        {showEarningsStrip && (
+          <View style={styles.earningsStrip}>
+            <Text style={styles.earningsStripLabel}>Your Earnings</Text>
+            <Text style={styles.earningsStripValue} numberOfLines={1} adjustsFontSizeToFit>
+              ₹{backendEarnings.toFixed(2)}
+            </Text>
+          </View>
+        )}
 
         <View style={styles.divider} />
 
@@ -225,7 +256,7 @@ const OrderHistoryScreen: React.FC = () => {
           <View style={styles.statCol}>
             <View style={styles.statTitleRow}>
               <Map size={14} color="#64748B" />
-              <Text style={styles.statLabel}>Distance</Text>
+              <Text style={styles.statLabel}>{distanceLabel}</Text>
             </View>
             <Text style={styles.statValue}>{distance}</Text>
           </View>
@@ -440,6 +471,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+  customerRowFull: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  customerPhoneText: {
+    fontSize: 11,
+    fontFamily: FONT_FAMILY.outfitMedium,
+    color: '#475569',
+    marginLeft: 4,
+  },
   customerText: {
     fontSize: 11,
     fontFamily: FONT_FAMILY.outfitMedium,
@@ -454,13 +496,8 @@ const styles = StyleSheet.create({
   },
   rightInfoWrap: {
     alignItems: 'flex-end',
-    justifyContent: 'center',
-  },
-  earningsText: {
-    fontSize: 16,
-    fontFamily: FONT_FAMILY.bricolageBold,
-    color: '#1D6BFC',
-    marginBottom: 6,
+    // The status pill now sits at the top right (the amount moved to the "Your Earnings" strip below).
+    alignSelf: 'flex-start',
   },
   statusPill: {
     flexDirection: 'row',
@@ -489,6 +526,30 @@ const styles = StyleSheet.create({
     color: '#475569',
   },
   statusTextSuccess: {
+    color: '#16A34A',
+  },
+  // Light green strip under the card header (same look as the Home order history card)
+  earningsStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 12,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1,
+    borderColor: '#DCFCE7',
+  },
+  earningsStripLabel: {
+    fontSize: 11,
+    fontFamily: FONT_FAMILY.outfitRegular,
+    color: '#64748B',
+  },
+  earningsStripValue: {
+    marginLeft: 8,
+    fontSize: 14,
+    fontFamily: FONT_FAMILY.bricolageBold,
     color: '#16A34A',
   },
   divider: {

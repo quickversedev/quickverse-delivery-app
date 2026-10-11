@@ -1174,7 +1174,8 @@ const getDeliveryPartnerHistory = async (
       validateStatus: status => status >= 200 && status < 400,
     }),
   );
-  return response.data;
+  // apiCall already returns the response body (the page with `content`), so there is no `.data` to unwrap.
+  return response;
 };
 
 const deliveryPartnerService = {
