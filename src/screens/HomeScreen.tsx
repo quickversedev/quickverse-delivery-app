@@ -1736,6 +1736,17 @@ const HomeScreen: React.FC = () => {
     );
     const shopId = order.orderDetails?.shopId ?? order.shopId;
 
+    // Rider's earnings for this order (from the backend). Shown only for completed orders that have an amount,
+    // so rejected/undelivered orders never show a made-up "₹0.00".
+    const isCompletedOrder =
+      !isPartnerRejectedOrder(order) &&
+      (order.orderStatus?.toUpperCase() === 'DELIVERED' ||
+        order.orderDetails?.state?.toUpperCase() === 'COMPLETED');
+    const historyEarnings =
+      isCompletedOrder && Number.isFinite(order.riderEarnings) && order.riderEarnings > 0
+        ? order.riderEarnings
+        : null;
+
     const customerMobile = order.orderDetails?.customerMobile ?? 'N/A';
     const customerAddress = parseCustomerAddress(
       order.orderDetails?.customerAddress ?? null,
@@ -1848,6 +1859,19 @@ const HomeScreen: React.FC = () => {
             <ChevronDown size={18} color="#94A3B8" style={{ marginLeft: 4 }} />
           )}
         </View>
+
+        {/* Always visible (collapsed or expanded): what the rider earned on this order */}
+        {historyEarnings != null && (
+          <View style={styles.orderEarningsRow}>
+            <Text style={styles.orderEarningsLabel}>Your Earnings</Text>
+            <Text
+              style={styles.orderEarningsValue}
+              numberOfLines={1}
+              adjustsFontSizeToFit>
+              {formatCurrency(historyEarnings)}
+            </Text>
+          </View>
+        )}
 
         {isExpanded && (
           <>
@@ -3417,6 +3441,30 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontFamily: FONT_FAMILY.outfitBold,
     color: '#0E6DFD',
+  },
+  // Light green strip under the card header, same soft style as the status pill / live-card earnings
+  orderEarningsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 10,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1,
+    borderColor: '#DCFCE7',
+  },
+  orderEarningsLabel: {
+    fontSize: 11,
+    fontFamily: FONT_FAMILY.outfitRegular,
+    color: '#64748B',
+  },
+  orderEarningsValue: {
+    marginLeft: 8,
+    fontSize: 14,
+    fontFamily: FONT_FAMILY.bricolageBold,
+    color: '#16A34A',
   },
   sectionBlock: {
     borderWidth: 1,
