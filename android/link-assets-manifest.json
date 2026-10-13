@@ -1,0 +1,29 @@
+{
+  "migIndex": 1,
+  "data": [
+    {
+      "path": "src/assets/fonts/BricolageGrotesque-Bold.ttf",
+      "sha1": "b2aedef46f4671362d339ddbaeca111c7569b7b6"
+    },
+    {
+      "path": "src/assets/fonts/BricolageGrotesque-Medium.ttf",
+      "sha1": "312e556215ad62fadc5e075666fcad5b014d6d74"
+    },
+    {
+      "path": "src/assets/fonts/BricolageGrotesque-Regular.ttf",
+      "sha1": "1923e5484379d4224ad6578146d7441da2234efa"
+    },
+    {
+      "path": "src/assets/fonts/Outfit-Bold.ttf",
+      "sha1": "148c9a4f145442e85509a202472f3dfc002f2359"
+    },
+    {
+      "path": "src/assets/fonts/Outfit-ExtraBold.ttf",
+      "sha1": "a46134346caa0c18b65157641be59e5973037ded"
+    },
+    {
+      "path": "src/assets/fonts/Outfit-Regular.ttf",
+      "sha1": "06a8de7221f96cdce3e90e32444f1db7897b479a"
+    }
+  ]
+}

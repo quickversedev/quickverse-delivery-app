@@ -1,0 +1,1207 @@
+import axiosInstance, { apiCall } from './axios.config';
+import { TokenStorage } from '../utils/storage';
+
+export type DeliveryPartnerProfile = {
+  id: string;
+  name: string;
+  profileImageUrl: string | null;
+  totalOrders: number;
+  orderSuccess: number;
+  orderFailed: number;
+  earnings: number | null;
+  isOnline?: boolean;
+  isActive?: boolean;
+  mobileNumber?: string | null;
+  isVerified?: boolean;
+  rating?: number;
+  acceptanceRate?: number;
+  regionId?: any;
+};
+
+export type NotificationSettings = {
+  liveOrderPoolNotifications: boolean;
+};
+
+type OrderFinance = {
+  itemTotalAmount?: number;
+  couponId?: string | null;
+  couponCode?: string | null;
+  couponDiscount?: number;
+  isFreeDelivery?: boolean;
+  amountAfterCoupon?: number;
+  packagingCharges?: number;
+  actualDeliveryFee?: number;
+  deliveryFee?: number;
+  platformFee?: number;
+  razorpayCharges?: number;
+  serviceGstRate?: number;
+  commissionGst?: number;
+  deliveryGst?: number;
+  packagingGst?: number;
+  codGst?: number;
+  platformGst?: number;
+  totalGst?: number;
+  taxableAmount?: number;
+  payableAmount?: number;
+  commissionRate?: number;
+  commission?: number;
+  paymentMethod?: string | null;
+  codCharges?: number;
+  createdAt?: string | number;
+  updatedAt?: string | number | null;
+};
+
+export type DeliveryPartnerOrder = {
+  id: string;
+  orderId: string;
+  customerId: number | null;
+  shopId: number | null;
+  deliveryPartnerId: string;
+  regionId: any;
+  financeId: string | null;
+  orderStatus: string;
+  onTime: boolean | null;
+  orderRating: number;
+  paymentStatus: string | null;
+  paymentMethod: string | null;
+  paymentReferenceId: string | null;
+  assignedAt: string | null;
+  arrivedAtStoreAt: string | null;
+  reachedLocationAt: string | null;
+  pickedUpAt: string | null;
+  deliveredAt: string | null;
+  createdAt: string | null;
+  createdBy: string | null;
+  updatedBy: string | null;
+  updatedAt: string | null;
+  orderDetails: DeliveryPartnerOrderDetails | null;
+  finance: OrderFinance | null;
+  shopDetails: DeliveryPartnerShopDetails | null;
+  customerAddressId: string | null;
+  reportedAddresses: ReportedAddress[] | null;
+  /**
+   * Rider earnings as calculated by the backend. While `locationPending` is true this is only a
+   * drop-distance estimate, so screens must not show it as the final amount.
+   */
+  riderEarnings: number;
+  /** Backend distances (km); pickup/total stay null until the rider's GPS was captured. */
+  pickupDistance: number | null;
+  dropDistance: number | null;
+  totalDistance: number | null;
+  /** True while the pickup leg is unknown, i.e. total distance / earnings are not final. */
+  locationPending: boolean;
+};
+
+export type DeliveryPartnerOrderItem = {
+  id: number;
+  name: string;
+  itemCount: number;
+};
+
+export type DeliveryPartnerOrderDetails = {
+  orderId: string;
+  campusId: string | null;
+  shopId: number | null;
+  customerId: number | null;
+  customerName: string | null;
+  customerMobile: string | null;
+  customerAddress: string | null;
+  state: string | null;
+  acceptedDate: string | null;
+  completedDate: string | null;
+  rejectedDate: string | null;
+  orderItem: DeliveryPartnerOrderItem[];
+  totalAmount: number;
+  totalItemCount: number;
+  productCount: number;
+  invoiceAmount: number;
+  fulfillmentOption: string | null;
+  creationTime: string | null;
+  amountExcludingDeliveryFee: number;
+  deliveryFee: number;
+  productImageURLs: string | null;
+  stateLabel: string | null;
+  orderDescription: string | null;
+  orderLink: string | null;
+  paymentMethod: string | null;
+  paymentProofURLImageUrl: string | null;
+  dropDistance: number | null;
+  pickupDistance: number | null;
+  totalDistance: number | null;
+  locationPending?: boolean;
+};
+
+/** Distance + earnings fields the backend refreshes after accept (taken as-is, never recalculated in the app). */
+export type OrderDistanceSnapshot = {
+  pickupDistance: number | null;
+  dropDistance: number | null;
+  totalDistance: number | null;
+  riderEarnings: number | null;
+  locationPending: boolean;
+};
+
+/**
+ * Backend estimate for an order the rider has not accepted yet, calculated from the rider's GPS with the
+ * admin earnings config. Pickup/total/earning are null while `locationPending` is true.
+ */
+export type OrderEstimate = {
+  orderId: string;
+  pickupDistance: number | null;
+  dropDistance: number | null;
+  totalDistance: number | null;
+  estimatedEarning: number | null;
+  locationPending: boolean;
+};
+
+export type DeliveryPartnerShopAddress = {
+  id: number | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  postalCode: string | null;
+  latitude: number | null;
+  longitude: number | null;
+};
+
+export type ReportedAddressPayload = {
+  addressId: string;
+  customerId: string;
+  reportedByPartnerId: string;
+  latitude: number;
+  longitude: number;
+  addressLine1?: string | null;
+  addressLine2?: string | null;
+  landmark?: string | null;
+  city?: string | null;
+  state?: string | null;
+  pincode?: string | null;
+  reason?: string | null;
+};
+
+export type ReportedAddress = ReportedAddressPayload & {
+  id?: string;
+  createdAt?: string | null;
+};
+
+export const normalizeOrderStatus = (
+  status?: string | null,
+):
+  | 'ACCEPTED'
+  | 'ARRIVED_AT_STORE'
+  | 'ORDER_PICKED_UP'
+  | 'ARRIVED_AT_LOCATION'
+  | 'DELIVERED'
+  | 'UNKNOWN' => {
+  const normalized = `${status ?? ''}`.trim().toUpperCase();
+
+  if (!normalized) return 'UNKNOWN';
+  if (normalized === 'PARTNER_ASSIGNED' || normalized === 'ACCEPTED')
+    return 'ACCEPTED';
+  if (normalized === 'ARRIVED_AT_STORE') return 'ARRIVED_AT_STORE';
+  if (normalized === 'ORDER_PICKED_UP' || normalized === 'PICKED_UP')
+    return 'ORDER_PICKED_UP';
+  if (normalized === 'ARRIVED_AT_LOCATION' || normalized === 'REACHED_LOCATION')
+    return 'ARRIVED_AT_LOCATION';
+  if (normalized === 'DELIVERED') return 'DELIVERED';
+  return 'UNKNOWN';
+};
+
+export const validateReportedAddressPayload = (
+  payload: Partial<ReportedAddressPayload>,
+): ReportedAddressPayload => {
+  const addressId = String(payload.addressId ?? '').trim();
+  const customerId = String(payload.customerId ?? '').trim();
+  const reportedByPartnerId = String(payload.reportedByPartnerId ?? '').trim();
+
+  if (!addressId) throw new Error('addressId is required');
+  if (!customerId) throw new Error('customerId is required');
+  if (!reportedByPartnerId) throw new Error('reportedByPartnerId is required');
+
+  const latitude = Number(payload.latitude);
+  const longitude = Number(payload.longitude);
+
+  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
+    throw new Error('latitude must be between -90 and 90');
+  }
+  if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+    throw new Error('longitude must be between -180 and 180');
+  }
+
+  return {
+    addressId,
+    customerId,
+    reportedByPartnerId,
+    latitude,
+    longitude,
+    addressLine1: payload.addressLine1 ?? null,
+    addressLine2: payload.addressLine2 ?? null,
+    landmark: payload.landmark ?? null,
+    city: payload.city ?? null,
+    state: payload.state ?? null,
+    pincode: payload.pincode ?? null,
+    reason: payload.reason ?? null,
+  };
+};
+
+export type DeliveryPartnerShopCoordinates = {
+  latitude: number | null;
+  longitude: number | null;
+};
+
+export type DeliveryPartnerShopDetails = {
+  shopId: string | null;
+  name: string | null;
+  logo: string | null;
+  banner: string | null;
+  owner: string | null;
+  phone: string | null;
+  openingTime: string | null;
+  closingTime: string | null;
+  preparationTime: string | null;
+  description: string | null;
+  category: string | null;
+  storeActive: boolean;
+  storeEnabled: boolean;
+  featured: boolean;
+  latitude: number | null;
+  longitude: number | null;
+  coordinates: DeliveryPartnerShopCoordinates | null;
+  address: DeliveryPartnerShopAddress | null;
+};
+
+type DeliveryPartnerApiResponse = {
+  data?: {
+    id?: string;
+    deliveryPartnerId?: string;
+    name?: string;
+    fullName?: string;
+    partnerName?: string;
+    profileImageUrl?: string;
+    profileImage?: string;
+    profilePicture?: string;
+    imageUrl?: string;
+    avatarUrl?: string;
+    totalOrders?: number;
+    orderSuccess?: number;
+    orderFailed?: number;
+    earnings?: number;
+    totalEarnings?: number;
+    isOnline?: boolean;
+    isActive?: boolean;
+    active?: boolean;
+    mobileNumber?: string | number;
+    isVerified?: boolean;
+    rating?: number;
+    acceptanceRate?: number;
+    regionId?: any;
+  };
+  id?: string;
+  deliveryPartnerId?: string;
+  isOnline?: boolean;
+  isActive?: boolean;
+  active?: boolean;
+  name?: string;
+  fullName?: string;
+  partnerName?: string;
+  profileImageUrl?: string;
+  profileImage?: string;
+  profilePicture?: string;
+  imageUrl?: string;
+  avatarUrl?: string;
+  totalOrders?: number;
+  orderSuccess?: number;
+  orderFailed?: number;
+  earnings?: number;
+  totalEarnings?: number;
+  mobileNumber?: string | number;
+  isVerified?: boolean;
+  rating?: number;
+  acceptanceRate?: number;
+  regionId?: any;
+};
+
+const normalizePartnerProfile = (
+  response: DeliveryPartnerApiResponse,
+  partnerId: string,
+): DeliveryPartnerProfile => {
+  const payload = response?.data ?? response;
+
+  return {
+    id: payload?.id ?? payload?.deliveryPartnerId ?? partnerId,
+    name:
+      payload?.name ??
+      payload?.fullName ??
+      payload?.partnerName ??
+      'Delivery Partner',
+    profileImageUrl:
+      payload?.profileImageUrl ??
+      payload?.profileImage ??
+      payload?.profilePicture ??
+      payload?.imageUrl ??
+      payload?.avatarUrl ??
+      null,
+    totalOrders: Number(payload?.totalOrders ?? 0),
+    orderSuccess: Number(payload?.orderSuccess ?? 0),
+    orderFailed: Number(payload?.orderFailed ?? 0),
+    earnings:
+      typeof payload?.earnings === 'number'
+        ? payload.earnings
+        : typeof payload?.totalEarnings === 'number'
+        ? payload.totalEarnings
+        : null,
+    isOnline: Boolean(payload?.isOnline ?? false),
+    isActive: typeof payload?.isActive === 'boolean' ? payload.isActive : typeof payload?.active === 'boolean' ? payload.active : undefined,
+    mobileNumber: payload?.mobileNumber ? String(payload.mobileNumber) : null,
+    isVerified: Boolean(payload?.isVerified ?? false),
+    rating: Number(payload?.rating ?? 0),
+    acceptanceRate: Number(payload?.acceptanceRate ?? 0),
+    regionId: payload?.regionId ? String(payload.regionId) : null,
+  };
+};
+
+const getDeliveryPartnerById = async (
+  partnerId: string,
+): Promise<DeliveryPartnerProfile> => {
+  const sessionKey = await TokenStorage.getToken();
+
+  const data = await apiCall<DeliveryPartnerApiResponse>(
+    axiosInstance.get(`/v1/delivery-partner/${partnerId}`, {
+      validateStatus: status => status >= 200 && status < 400,
+      headers: {
+        SessionKey: sessionKey || '',
+        'Request-Origin': 'TRANSPORTER',
+      },
+    }),
+  );
+
+  console.log('Raw API response for delivery partner profile:', data);
+
+  return normalizePartnerProfile(data, partnerId);
+};
+
+const toggleDeliveryPartnerOnlineStatus = async (
+  partnerId: string,
+  isOnline: boolean,
+): Promise<void> => {
+  const sessionKey = await TokenStorage.getToken();
+
+  await apiCall(
+    axiosInstance.patch(`/v1/delivery-partner/${partnerId}/online`, null, {
+      params: { isOnline },
+      headers: {
+        SessionKey: sessionKey || '',
+        'Request-Origin': 'TRANSPORTER',
+      },
+      validateStatus: status => status >= 200 && status < 400,
+    }),
+  );
+};
+
+const getNotificationSettings = async (
+  partnerId: string,
+): Promise<NotificationSettings> => {
+  const sessionKey = await TokenStorage.getToken();
+  const data = await apiCall<NotificationSettings>(
+    axiosInstance.get(`/v1/delivery-partner/${partnerId}/notification-settings`, {
+      validateStatus: status => status >= 200 && status < 400,
+      headers: {
+        SessionKey: sessionKey || '',
+        'Request-Origin': 'TRANSPORTER',
+      },
+    }),
+  );
+  return data;
+};
+
+const updateNotificationSettings = async (
+  partnerId: string,
+  settings: Partial<NotificationSettings>,
+): Promise<void> => {
+  const sessionKey = await TokenStorage.getToken();
+  await apiCall(
+    axiosInstance.patch(
+      `/v1/delivery-partner/${partnerId}/notification-settings`,
+      settings,
+      {
+        headers: {
+          SessionKey: sessionKey || '',
+          'Request-Origin': 'TRANSPORTER',
+        },
+        validateStatus: status => status >= 200 && status < 400,
+      }
+    )
+  );
+};
+
+/** Number from a backend value, or null when missing / not numeric (never 0 for "unknown"). */
+const toNumberOrNull = (value: unknown): number | null => {
+  if (value == null || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+/**
+ * Distance field from the order. The backend sends these both on the order itself and inside
+ * `orderDetails` (list API), and only on the order itself for the single-order API, so both are read.
+ */
+const readOrderDistance = (
+  order: any,
+  key: 'pickupDistance' | 'dropDistance' | 'totalDistance',
+): number | null =>
+  toNumberOrNull(order?.orderDetails?.[key]) ?? toNumberOrNull(order?.[key]);
+
+const readLocationPending = (order: any): boolean => {
+  const flag = order?.orderDetails?.locationPending ?? order?.locationPending;
+  // Older backends do not send the flag: pickup being unknown is the same condition.
+  return typeof flag === 'boolean' ? flag : readOrderDistance(order, 'pickupDistance') == null;
+};
+
+const normalizePartnerOrder = (order: any): DeliveryPartnerOrder => ({
+  id: String(order?.id ?? ''),
+  assignedAt: order?.assignedAt ? String(order.assignedAt) : null,
+  arrivedAtStoreAt: order?.arrivedAtStoreAt
+    ? String(order.arrivedAtStoreAt)
+    : null,
+  reachedLocationAt: order?.reachedLocationAt
+    ? String(order.reachedLocationAt)
+    : null,
+  pickedUpAt: order?.pickedUpAt ? String(order.pickedUpAt) : null,
+  deliveredAt: order?.deliveredAt ? String(order.deliveredAt) : null,
+  orderId: String(order?.orderId ?? ''),
+  customerId:
+    typeof order?.customerId === 'number'
+      ? order.customerId
+      : order?.customerId
+      ? Number(order.customerId)
+      : null,
+  shopId:
+    typeof order?.shopId === 'number'
+      ? order.shopId
+      : order?.shopId
+      ? Number(order.shopId)
+      : null,
+  deliveryPartnerId: String(order?.deliveryPartnerId ?? ''),
+  regionId: order?.regionId ? String(order.regionId) : null,
+  financeId: order?.financeId ? String(order.financeId) : null,
+  orderStatus: String(order?.orderStatus ?? 'UNKNOWN'),
+  onTime:
+    typeof order?.onTime === 'boolean'
+      ? order.onTime
+      : order?.onTime == null
+      ? null
+      : Boolean(order.onTime),
+  orderRating:
+    typeof order?.orderRating === 'number'
+      ? order.orderRating
+      : Number(order?.orderRating ?? 0),
+  paymentStatus: order?.paymentStatus ? String(order.paymentStatus) : null,
+  paymentMethod: order?.paymentMethod ? String(order.paymentMethod) : null,
+  paymentReferenceId: order?.paymentReferenceId
+    ? String(order.paymentReferenceId)
+    : null,
+  createdAt: order?.createdAt ? String(order.createdAt) : null,
+  createdBy: order?.createdBy ? String(order.createdBy) : null,
+  updatedBy: order?.updatedBy ? String(order.updatedBy) : null,
+  updatedAt: order?.updatedAt ? String(order.updatedAt) : null,
+  finance: order?.orderDetails?.finance || null,
+  customerAddressId: order?.orderDetails?.customerAddressId || null,
+  reportedAddresses: (order?.orderDetails?.reportedAddresses) || [],
+  riderEarnings: typeof order?.riderEarnings === 'number' ? order.riderEarnings : (typeof order?.finance?.riderEarnings === 'number' ? order.finance.riderEarnings : (typeof order?.orderDetails?.finance?.riderEarnings === 'number' ? order.orderDetails.finance.riderEarnings : 0)),
+  pickupDistance: readOrderDistance(order, 'pickupDistance'),
+  dropDistance: readOrderDistance(order, 'dropDistance'),
+  totalDistance: readOrderDistance(order, 'totalDistance'),
+  locationPending: readLocationPending(order),
+  orderDetails: order?.orderDetails
+    ? {
+        orderId: String(order.orderDetails?.orderId ?? order?.orderId ?? ''),
+        campusId: order.orderDetails?.campusId
+          ? String(order.orderDetails.campusId)
+          : null,
+        shopId:
+          typeof order.orderDetails?.shopId === 'number'
+            ? order.orderDetails.shopId
+            : order.orderDetails?.shopId
+            ? Number(order.orderDetails.shopId)
+            : null,
+        customerId:
+          typeof order.orderDetails?.customerId === 'number'
+            ? order.orderDetails.customerId
+            : order.orderDetails?.customerId
+            ? Number(order.orderDetails.customerId)
+            : null,
+        customerName: order.orderDetails?.customerName
+          ? String(order.orderDetails.customerName)
+          : null,
+        customerMobile: order.orderDetails?.customerMobile
+          ? String(order.orderDetails.customerMobile)
+          : null,
+        customerAddress: order.orderDetails?.customerAddress
+          ? String(order.orderDetails.customerAddress)
+          : null,
+        state: order.orderDetails?.state
+          ? String(order.orderDetails.state)
+          : null,
+        acceptedDate: order.orderDetails?.acceptedDate
+          ? String(order.orderDetails.acceptedDate)
+          : null,
+        completedDate: order.orderDetails?.completedDate
+          ? String(order.orderDetails.completedDate)
+          : null,
+        rejectedDate: order.orderDetails?.rejectedDate
+          ? String(order.orderDetails.rejectedDate)
+          : null,
+        orderItem: Array.isArray(order.orderDetails?.orderItem)
+          ? order.orderDetails.orderItem.map((item: any) => ({
+              id: Number(item?.id ?? 0),
+              name: String(item?.name ?? ''),
+              itemCount:
+                typeof item?.itemCount === 'number'
+                  ? item.itemCount
+                  : Number(item?.itemCount ?? 0),
+            }))
+          : [],
+        totalAmount:
+          typeof order.orderDetails?.totalAmount === 'number'
+            ? order.orderDetails.totalAmount
+            : Number(order.orderDetails?.totalAmount ?? 0),
+        totalItemCount:
+          typeof order.orderDetails?.totalItemCount === 'number'
+            ? order.orderDetails.totalItemCount
+            : Number(order.orderDetails?.totalItemCount ?? 0),
+        productCount:
+          typeof order.orderDetails?.productCount === 'number'
+            ? order.orderDetails.productCount
+            : Number(order.orderDetails?.productCount ?? 0),
+        invoiceAmount:
+          typeof order.orderDetails?.invoiceAmount === 'number'
+            ? order.orderDetails.invoiceAmount
+            : Number(order.orderDetails?.invoiceAmount ?? 0),
+        fulfillmentOption: order.orderDetails?.fulfillmentOption
+          ? String(order.orderDetails.fulfillmentOption)
+          : null,
+        creationTime: order.orderDetails?.creationTime
+          ? String(order.orderDetails.creationTime)
+          : null,
+        amountExcludingDeliveryFee:
+          typeof order.orderDetails?.amountExcludingDeliveryFee === 'number'
+            ? order.orderDetails.amountExcludingDeliveryFee
+            : Number(order.orderDetails?.amountExcludingDeliveryFee ?? 0),
+        deliveryFee:
+          typeof order.orderDetails?.deliveryFee === 'number'
+            ? order.orderDetails.deliveryFee
+            : Number(order.orderDetails?.deliveryFee ?? 0),
+        productImageURLs: order.orderDetails?.productImageURLs
+          ? String(order.orderDetails.productImageURLs)
+          : null,
+        stateLabel: order.orderDetails?.stateLabel
+          ? String(order.orderDetails.stateLabel)
+          : null,
+        orderDescription: order.orderDetails?.orderDescription
+          ? String(order.orderDetails.orderDescription)
+          : null,
+        orderLink: order.orderDetails?.orderLink
+          ? String(order.orderDetails.orderLink)
+          : null,
+        paymentMethod: order.orderDetails?.paymentMethod
+          ? String(order.orderDetails.paymentMethod)
+          : null,
+        paymentProofURLImageUrl: order.orderDetails?.paymentProofURLImageUrl
+          ? String(order.orderDetails.paymentProofURLImageUrl)
+          : null,
+        dropDistance: readOrderDistance(order, 'dropDistance'),
+        pickupDistance: readOrderDistance(order, 'pickupDistance'),
+        totalDistance: readOrderDistance(order, 'totalDistance'),
+        locationPending: readLocationPending(order),
+      }
+    : null,
+  shopDetails: order?.shopDetails
+    ? {
+        shopId: order.shopDetails?.shopId
+          ? String(order.shopDetails.shopId)
+          : null,
+        name: order.shopDetails?.name ? String(order.shopDetails.name) : null,
+        logo: order.shopDetails?.logo ? String(order.shopDetails.logo) : null,
+        banner: order.shopDetails?.banner
+          ? String(order.shopDetails.banner)
+          : null,
+        owner: order.shopDetails?.owner
+          ? String(order.shopDetails.owner)
+          : null,
+        phone: order.shopDetails?.phone
+          ? String(order.shopDetails.phone)
+          : null,
+        openingTime: order.shopDetails?.openingTime
+          ? String(order.shopDetails.openingTime)
+          : null,
+        closingTime: order.shopDetails?.closingTime
+          ? String(order.shopDetails.closingTime)
+          : null,
+        preparationTime: order.shopDetails?.preparationTime
+          ? String(order.shopDetails.preparationTime)
+          : null,
+        description: order.shopDetails?.description
+          ? String(order.shopDetails.description)
+          : null,
+        category: order.shopDetails?.category
+          ? String(order.shopDetails.category)
+          : null,
+        storeActive: Boolean(order.shopDetails?.storeActive),
+        storeEnabled: Boolean(order.shopDetails?.storeEnabled),
+        featured: Boolean(order.shopDetails?.featured),
+        coordinates: order.shopDetails?.coordinates
+          ? {
+              latitude:
+                typeof order.shopDetails.coordinates?.latitude === 'number'
+                  ? order.shopDetails.coordinates.latitude
+                  : order.shopDetails.coordinates?.latitude
+                  ? Number(order.shopDetails.coordinates.latitude)
+                  : null,
+              longitude:
+                typeof order.shopDetails.coordinates?.longitude === 'number'
+                  ? order.shopDetails.coordinates.longitude
+                  : order.shopDetails.coordinates?.longitude
+                  ? Number(order.shopDetails.coordinates.longitude)
+                  : null,
+            }
+          : null,
+        latitude:
+          typeof order.shopDetails?.latitude === 'number'
+            ? order.shopDetails.latitude
+            : typeof order.shopDetails?.coordinates?.latitude === 'number'
+            ? order.shopDetails.coordinates.latitude
+            : order.shopDetails?.latitude
+            ? Number(order.shopDetails.latitude)
+            : order.shopDetails?.coordinates?.latitude
+            ? Number(order.shopDetails.coordinates.latitude)
+            : null,
+        longitude:
+          typeof order.shopDetails?.longitude === 'number'
+            ? order.shopDetails.longitude
+            : typeof order.shopDetails?.coordinates?.longitude === 'number'
+            ? order.shopDetails.coordinates.longitude
+            : order.shopDetails?.longitude
+            ? Number(order.shopDetails.longitude)
+            : order.shopDetails?.coordinates?.longitude
+            ? Number(order.shopDetails.coordinates.longitude)
+            : null,
+        address: order.shopDetails?.address
+          ? {
+              id:
+                typeof order.shopDetails.address?.id === 'number'
+                  ? order.shopDetails.address.id
+                  : order.shopDetails.address?.id
+                  ? Number(order.shopDetails.address.id)
+                  : null,
+              address: order.shopDetails.address?.address
+                ? String(order.shopDetails.address.address)
+                : null,
+              city: order.shopDetails.address?.city
+                ? String(order.shopDetails.address.city)
+                : null,
+              state: order.shopDetails.address?.state
+                ? String(order.shopDetails.address.state)
+                : null,
+              postalCode: order.shopDetails.address?.postalCode
+                ? String(order.shopDetails.address.postalCode)
+                : null,
+              latitude:
+                typeof order.shopDetails.address?.latitude === 'number'
+                  ? order.shopDetails.address.latitude
+                  : order.shopDetails.address?.latitude
+                  ? Number(order.shopDetails.address.latitude)
+                  : null,
+              longitude:
+                typeof order.shopDetails.address?.longitude === 'number'
+                  ? order.shopDetails.address.longitude
+                  : order.shopDetails.address?.longitude
+                  ? Number(order.shopDetails.address.longitude)
+                  : null,
+            }
+          : null,
+      }
+    : null,
+});
+
+const getAssignedOrdersByPartnerId = async (
+  partnerId: string,
+  timeRangeFilter?: 'all' | 'today' | 'week' | 'month' | 'custom',
+  customRange?: { fromDate: string; toDate: string },
+): Promise<DeliveryPartnerOrder[]> => {
+  const sessionKey = await TokenStorage.getToken();
+
+  const params: Record<string, any> = { size: 200 };
+
+  if (timeRangeFilter === 'custom' && customRange) {
+    // Backend checks fromDate/toDate before timeFilter, so timeFilter is
+    // omitted here — no need to send both.
+    params.fromDate = customRange.fromDate;
+    params.toDate = customRange.toDate;
+  } else {
+    params.timeFilter = timeRangeFilter ?? 'all';
+  }
+
+  const data = await apiCall<any>(
+    axiosInstance.get(`/v1/order-master/delivery-partner/${partnerId}`, {
+      params,
+      headers: {
+        SessionKey: sessionKey || '',
+        'Request-Origin': 'CAPTAIN',
+      },
+      validateStatus: status => status >= 200 && status < 400,
+    }),
+  );
+
+  if (Array.isArray(data?.content))
+    return data.content.map(normalizePartnerOrder);
+  if (Array.isArray(data)) return data.map(normalizePartnerOrder);
+  if (Array.isArray(data?.data)) return data.data.map(normalizePartnerOrder);
+  return [];
+};
+
+const updateAssignedOrderStatus = async (
+  orderMasterId: string,
+  status: 'ACCEPTED' | 'REJECTED' | 'PARTNER_ACCEPTED' | 'ARRIVED_AT_STORE',
+): Promise<void> => {
+  const sessionKey = await TokenStorage.getToken();
+
+  await apiCall(
+    axiosInstance.patch(
+      `/v1/order-master/${orderMasterId}/updateStatus`,
+      null,
+      {
+        params: { status },
+        headers: {
+          SessionKey: sessionKey || '',
+          'Request-Origin': 'CAPTAIN',
+        },
+        validateStatus: responseStatus =>
+          responseStatus >= 200 && responseStatus < 400,
+      },
+    ),
+  );
+};
+
+const createReportedAddress = async (
+  payload: Partial<ReportedAddressPayload>,
+): Promise<ReportedAddress> => {
+  const sessionKey = await TokenStorage.getToken();
+  const request = validateReportedAddressPayload(payload);
+
+  return apiCall<ReportedAddress>(
+    axiosInstance.post('/v1/reported-address', request, {
+      headers: {
+        SessionKey: sessionKey || '',
+        Authorization: `Bearer ${sessionKey || ''}`,
+        'Request-Origin': 'TRANSPORTER',
+      },
+      validateStatus: status => status >= 200 && status < 400,
+    }),
+  );
+};
+
+const getReportedAddressesByCustomer = async (
+  customerId: string,
+): Promise<ReportedAddress[]> => {
+  const sessionKey = await TokenStorage.getToken();
+
+  const data = await apiCall<any>(
+    axiosInstance.get(`/v1/reported-address/customer/${customerId}`, {
+      headers: {
+        SessionKey: sessionKey || '',
+        Authorization: `Bearer ${sessionKey || ''}`,
+        'Request-Origin': 'TRANSPORTER',
+      },
+      validateStatus: status => status >= 200 && status < 400,
+    }),
+  );
+
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.data)) return data.data;
+  return [];
+};
+
+/**
+ * Accept a newly-assigned order. Called from the "New Order Request" card
+ * (before any delivery-stage progression begins). On success the order's
+ * top-level `orderStatus` moves from PARTNER_ASSIGNED -> ACCEPTED, after
+ * which it becomes eligible for the normal live-order / "Manage Delivery"
+ * flow.
+ */
+const acceptOrder = async (orderMasterId: string, lat?: number, lng?: number): Promise<void> => {
+  const sessionKey = await TokenStorage.getToken();
+
+  await apiCall(
+    axiosInstance.patch(`/v1/order-master/${orderMasterId}/accept`, null, {
+      params: { lat, lng },
+      headers: {
+        SessionKey: sessionKey || '',
+        'Request-Origin': 'CAPTAIN',
+      },
+      validateStatus: status => status >= 200 && status < 400,
+    }),
+  );
+};
+
+/**
+ * Latest distance + earnings the backend holds for an order the rider has already accepted.
+ * Used so the delivery screen shows backend values instead of anything calculated in the app.
+ */
+const getOrderDistanceSnapshot = async (
+  orderMasterId: string,
+): Promise<OrderDistanceSnapshot> => {
+  const sessionKey = await TokenStorage.getToken();
+
+  const data = await apiCall<any>(
+    axiosInstance.get(`/v1/order-master/${orderMasterId}`, {
+      headers: {
+        SessionKey: sessionKey || '',
+        'Request-Origin': 'CAPTAIN',
+      },
+      // This endpoint answers 302 (FOUND) with the order in the body.
+      validateStatus: status => status >= 200 && status < 400,
+    }),
+  );
+  return normalizeDistanceSnapshot(data);
+};
+
+/**
+ * Sends the rider's GPS for an accepted order whose pickup distance is still missing. The backend fills the
+ * pickup/total distance (only before pickup, only once) and returns the fresh values.
+ */
+const updatePickupLocation = async (
+  orderMasterId: string,
+  lat: number,
+  lng: number,
+): Promise<OrderDistanceSnapshot> => {
+  const sessionKey = await TokenStorage.getToken();
+
+  const data = await apiCall<any>(
+    axiosInstance.patch(`/v1/order-master/${orderMasterId}/update-location`, null, {
+      params: { lat, lng },
+      headers: {
+        SessionKey: sessionKey || '',
+        'Request-Origin': 'CAPTAIN',
+      },
+      validateStatus: status => status >= 200 && status < 400,
+    }),
+  );
+  return normalizeDistanceSnapshot(data);
+};
+
+const normalizeDistanceSnapshot = (data: any): OrderDistanceSnapshot => ({
+  pickupDistance: readOrderDistance(data, 'pickupDistance'),
+  dropDistance: readOrderDistance(data, 'dropDistance'),
+  totalDistance: readOrderDistance(data, 'totalDistance'),
+  riderEarnings: toNumberOrNull(data?.riderEarnings),
+  locationPending: readLocationPending(data),
+});
+
+/**
+ * Pre-accept distance + earnings for the given orders from the rider's GPS. The backend applies the road
+ * factor and the admin earnings config, so the app never carries a formula.
+ */
+const getOrderEstimates = async (
+  orderIds: string[],
+  lat: number,
+  lng: number,
+): Promise<OrderEstimate[]> => {
+  const sessionKey = await TokenStorage.getToken();
+
+  const data = await apiCall<any>(
+    axiosInstance.post(
+      '/quickVerse/v3/delivery-partner/order-estimates',
+      { orderIds, lat, lng },
+      {
+        headers: {
+          SessionKey: sessionKey || '',
+          'Request-Origin': 'TRANSPORTER',
+        },
+      },
+    ),
+  );
+  return (Array.isArray(data) ? data : []).map((item: any) => ({
+    orderId: String(item?.orderId ?? ''),
+    pickupDistance: toNumberOrNull(item?.pickupDistance),
+    dropDistance: toNumberOrNull(item?.dropDistance),
+    totalDistance: toNumberOrNull(item?.totalDistance),
+    estimatedEarning: toNumberOrNull(item?.estimatedEarning),
+    locationPending: item?.locationPending !== false,
+  }));
+};
+
+/**
+ * Reject a newly-assigned order, with a mandatory reason. Called from the
+ * "New Order Request" card as the counterpart to `acceptOrder`.
+ */
+const rejectOrder = async (
+  orderMasterId: string,
+  reason: string,
+): Promise<void> => {
+  const sessionKey = await TokenStorage.getToken();
+
+  await apiCall(
+    axiosInstance.patch(`/v1/order-master/${orderMasterId}/reject`, null, {
+      params: { reason },
+      headers: {
+        SessionKey: sessionKey || '',
+        'Request-Origin': 'CAPTAIN',
+      },
+      validateStatus: status => status >= 200 && status < 400,
+    }),
+  );
+};
+
+export type TopPerformingRider = {
+  riderId: string;
+  name: string;
+  profilePicture: string | null;
+  deliveries: number;
+  earnings: number;
+  perOrderEarning: number;
+  totalAssigned: number;
+  acceptedCount: number;
+  acceptanceRate: number;
+};
+
+export type StatsPeriod = 'today' | 'week' | 'month' | 'all_time';
+
+/** Flat stats response — all fields scoped to the requested period. */
+export type DeliveryPartnerStats = {
+  deliveryPartnerId: string;
+  period: string;
+  orders: number;
+  earnings: number;
+  totalAssigned: number;
+  acceptedCount: number;
+  topPerformingRiders: TopPerformingRider[];
+  acceptanceRate?: number;
+  hoursLiveTime?: number;
+  onTimeDeliveryRate?: number;
+  ordersCompletedCount?: number;
+  totalDistanceTravelled?: number;
+};
+
+const getDeliveryPartnerStats = async (
+  partnerId: string,
+  period: StatsPeriod = 'today',
+  regionId: string | null = 'BEED-431122',
+): Promise<DeliveryPartnerStats> => {
+  const sessionKey = await TokenStorage.getToken();
+
+  const data = await apiCall<DeliveryPartnerStats>(
+    axiosInstance.get(`/v1/order-master/deliveryPartner/stats/${partnerId}`, {
+      headers: {
+        SessionKey: sessionKey || '',
+        'Request-Origin': 'CAPTAIN',
+      },
+      params: { period, regionId },
+      validateStatus: status => status >= 200 && status < 400,
+    }),
+  );
+  return data;
+};
+
+const updateDeliveryPartnerLocation = async (
+  partnerId: string,
+  latitude: number,
+  longitude: number,
+): Promise<void> => {
+  const sessionKey = await TokenStorage.getToken();
+
+  await apiCall(
+    axiosInstance.patch(
+      `/v1/delivery-partner/${partnerId}/location`,
+      {
+        latitude,
+        longitude: longitude,
+      },
+      {
+        headers: {
+          SessionKey: sessionKey || '',
+          'Request-Origin': 'TRANSPORTER',
+        },
+        validateStatus: status => status >= 200 && status < 400,
+      },
+    ),
+  );
+};
+
+const arriveAtStore = async (orderMasterId: string): Promise<void> => {
+  const sessionKey = await TokenStorage.getToken();
+  await apiCall(
+    axiosInstance.patch(`/v1/order-master/${orderMasterId}/arriveStore`, null, {
+      headers: {
+        SessionKey: sessionKey || '',
+        'Request-Origin': 'CAPTAIN',
+      },
+      validateStatus: status => status >= 200 && status < 400,
+    }),
+  );
+};
+
+const pickupOrder = async (orderMasterId: string): Promise<void> => {
+  const sessionKey = await TokenStorage.getToken();
+  await apiCall(
+    axiosInstance.patch(`/v1/order-master/${orderMasterId}/pickup`, null, {
+      headers: {
+        SessionKey: sessionKey || '',
+        'Request-Origin': 'CAPTAIN',
+      },
+      validateStatus: status => status >= 200 && status < 400,
+    }),
+  );
+};
+
+const arriveAtDestination = async (orderMasterId: string): Promise<void> => {
+  const sessionKey = await TokenStorage.getToken();
+  await apiCall(
+    axiosInstance.patch(
+      `/v1/order-master/${orderMasterId}/arriveDestination`,
+      null,
+      {
+        headers: {
+          SessionKey: sessionKey || '',
+          'Request-Origin': 'CAPTAIN',
+        },
+        validateStatus: status => status >= 200 && status < 400,
+      },
+    ),
+  );
+};
+
+const generatePaymentQr = async (orderId: string) => {
+  try {
+    const sessionKey = await TokenStorage.getToken();
+
+    const response = await apiCall(
+      axiosInstance.post(
+        `/quickVerse/v3/payment/qr/${orderId}?fixedAmount=true`,
+        null,
+        {
+          headers: {
+            SessionKey: sessionKey || '',
+            'Request-Origin': 'TRANSPORTER',
+          },
+        },
+      ),
+    );
+
+    return response;
+  } catch (error) {
+    console.log('Error generating payment QR code:', error);
+  }
+};
+
+const getPaymentQrStatus = async (orderId: string) => {
+  try {
+    const sessionKey = await TokenStorage.getToken();
+
+    const response = await apiCall(
+      axiosInstance.get(`/quickVerse/v3/payment/qr/status-check/${orderId}`, {
+        headers: {
+          SessionKey: sessionKey || '',
+          'Request-Origin': 'TRANSPORTER',
+        },
+      }),
+    );
+
+    return response;
+  } catch (error) {
+    console.log('Error fetching payment QR status:', error);
+  }
+};
+
+const completeDelivery = async (
+  orderMasterId: string,
+  paymentProofImageUri?: string | null,
+): Promise<void> => {
+  const sessionKey = await TokenStorage.getToken();
+
+  const formData = new FormData();
+
+  if (paymentProofImageUri) {
+    const filename = paymentProofImageUri.split('/').pop() ?? 'proof.jpg';
+    const match = /\.(\w+)$/.exec(filename);
+    const type = match ? `image/${match[1]}` : 'image/jpeg';
+
+    formData.append('paymentProofImageUrl', {
+      uri: paymentProofImageUri,
+      name: filename,
+      type,
+    } as any);
+  } else {
+    formData.append('paymentProofImageUrl', '');
+  }
+
+  await apiCall(
+    axiosInstance.patch(
+      `/v1/order-master/${orderMasterId}/completeDelivery`,
+      formData,
+      {
+        headers: {
+          SessionKey: sessionKey || '',
+          'Request-Origin': 'CAPTAIN',
+          'Content-Type': 'multipart/form-data',
+        },
+        validateStatus: status => status >= 200 && status < 400,
+      },
+    ),
+  );
+};
+
+const getDeliveryPartnerHistory = async (
+  partnerId: string,
+  page = 0,
+  size = 10,
+  fromDate?: string,
+  toDate?: string,
+): Promise<any> => {
+  const sessionKey = await TokenStorage.getToken();
+  const params = new URLSearchParams({
+    page: String(page),
+    size: String(size),
+  });
+
+  if (fromDate) params.append('fromDate', fromDate);
+  if (toDate) params.append('toDate', toDate);
+
+  const response = await apiCall<any>(
+    axiosInstance.get(`/v1/order-master/delivery-partner/${partnerId}?${params.toString()}`, {
+      headers: {
+        SessionKey: sessionKey || '',
+        'Request-Origin': 'CAPTAIN',
+      },
+      validateStatus: status => status >= 200 && status < 400,
+    }),
+  );
+  // apiCall already returns the response body (the page with `content`), so there is no `.data` to unwrap.
+  return response;
+};
+
+const deliveryPartnerService = {
+  generatePaymentQr,
+  getPaymentQrStatus,
+  getDeliveryPartnerById,
+  toggleDeliveryPartnerOnlineStatus,
+  getAssignedOrdersByPartnerId,
+  updateAssignedOrderStatus,
+  acceptOrder,
+  getOrderDistanceSnapshot,
+  updatePickupLocation,
+  getOrderEstimates,
+  rejectOrder,
+  createReportedAddress,
+  getReportedAddressesByCustomer,
+  updateDeliveryPartnerLocation,
+  getDeliveryPartnerStats,
+  arriveAtStore,
+  pickupOrder,
+  arriveAtDestination,
+  completeDelivery,
+  getNotificationSettings,
+  updateNotificationSettings,
+  getDeliveryPartnerHistory,
+};
+
+export default deliveryPartnerService;
+
