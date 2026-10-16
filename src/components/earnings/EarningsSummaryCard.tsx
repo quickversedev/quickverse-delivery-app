@@ -16,9 +16,11 @@ import { COMPARISON_LABEL } from '../../services/earnings.service';
 // ─── Filter-aware header label ────────────────────────────────────────────────
 const PERIOD_LABELS: Record<EarningsPeriod, string> = {
   today: 'TOTAL EARNINGS TODAY',
+  yesterday: 'TOTAL EARNINGS YESTERDAY',
   thisWeek: 'TOTAL EARNINGS THIS WEEK',
   thisMonth: 'TOTAL EARNINGS THIS MONTH',
   lifetime: 'TOTAL LIFETIME EARNINGS',
+  custom: 'TOTAL EARNINGS (CUSTOM RANGE)',
 };
 
 // ─── Breakdown item config ────────────────────────────────────────────────────
@@ -95,7 +97,9 @@ const BreakdownItem: React.FC<BreakdownItemProps> = ({ config, amount }) => {
 const EarningsSummaryCard: React.FC<Props> = ({ data, period }) => {
   const { totalEarnings, percentage, percentageStatus, payoutBalance, breakdown } = data;
   const isPositive = percentageStatus === 'positive';
-  const showBadge = period !== 'lifetime';
+  const isNegative = percentageStatus === 'negative';
+  // No comparison for lifetime or a custom range
+  const showBadge = period !== 'lifetime' && period !== 'custom';
   const compLabel = COMPARISON_LABEL[period];
 
   const breakdownAmounts = [
@@ -116,21 +120,21 @@ const EarningsSummaryCard: React.FC<Props> = ({ data, period }) => {
           <View
             style={[
               styles.badge,
-              isPositive ? styles.badgePositive : styles.badgeNegative,
+              isPositive ? styles.badgePositive : isNegative ? styles.badgeNegative : styles.badgeNeutral,
             ]}
           >
             {isPositive ? (
               <TrendingUp size={11} color="#16A34A" strokeWidth={2.5} />
-            ) : (
+            ) : isNegative ? (
               <TrendingDown size={11} color="#DC2626" strokeWidth={2.5} />
-            )}
+            ) : null}
             <Text
               style={[
                 styles.badgeText,
-                isPositive ? styles.badgeTextPositive : styles.badgeTextNegative,
+                isPositive ? styles.badgeTextPositive : isNegative ? styles.badgeTextNegative : styles.badgeTextNeutral,
               ]}
             >
-              {isPositive ? '+' : '-'}{Math.abs(percentage)}%{' '}
+              {isPositive ? '+' : isNegative ? '-' : ''}{Math.abs(percentage)}%{' '}
               <Text style={styles.badgeSub}>{compLabel}</Text>
             </Text>
           </View>
@@ -223,6 +227,9 @@ const styles = StyleSheet.create({
   badgeNegative: {
     backgroundColor: '#FEF2F2',
   },
+  badgeNeutral: {
+    backgroundColor: '#F1F5F9',
+  },
   badgeText: {
     fontSize: 11,
     fontFamily: FONT_FAMILY.outfitBold,
@@ -232,6 +239,9 @@ const styles = StyleSheet.create({
   },
   badgeTextNegative: {
     color: '#DC2626',
+  },
+  badgeTextNeutral: {
+    color: '#64748B',
   },
   badgeSub: {
     fontFamily: FONT_FAMILY.outfitRegular,

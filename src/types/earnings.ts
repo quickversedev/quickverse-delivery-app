@@ -1,9 +1,15 @@
 // ─── Filter Period ──────────────────────────────────────────────────────────
-export type EarningsPeriod = 'today' | 'thisWeek' | 'thisMonth' | 'lifetime';
+export type EarningsPeriod = 'today' | 'yesterday' | 'thisWeek' | 'thisMonth' | 'lifetime' | 'custom';
+
+/** Custom range, both ends inclusive, "YYYY-MM-DD" (India dates) */
+export interface DateRange {
+  from: string;
+  to: string;
+}
 
 // ─── API 1: Earnings Summary (v3) ───────────────────────────────────────────
 // GET /quickVerse/v3/delivery-partner/earnings-summary?filter=<filter>
-export type PercentageStatus = 'positive' | 'negative';
+export type PercentageStatus = 'positive' | 'negative' | 'neutral';
 
 export interface EarningsBreakdownV3 {
   baseEarning: number;

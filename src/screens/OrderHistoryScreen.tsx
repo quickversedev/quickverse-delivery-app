@@ -26,14 +26,43 @@ import { RootStackParamList } from '../navigation/AppNavigator';
 import { FONT_FAMILY } from '../theme/typography';
 import useAuthStore from '../hooks/useAuthStore';
 import deliveryPartnerService from '../services/delivery-partner.service';
+import CustomDateRangeModal, { formatRangeLabel } from '../components/common/CustomDateRangeModal';
+import type { DateRange } from '../types/earnings';
 
 type OrderHistoryScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'OrderHistory'>;
 
-type FilterPeriod = 'today' | 'last7' | 'last14';
+type FilterPeriod = 'today' | 'yesterday' | 'last7' | 'last14' | 'custom';
 
 // The backend filters on India dates, and toISOString() is UTC (it gives "yesterday" between 12:00 and 5:30 AM IST).
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
 const toIstDateString = (date: Date) =>
-  new Date(date.getTime() + 5.5 * 60 * 60 * 1000).toISOString().split('T')[0];
+  new Date(date.getTime() + IST_OFFSET_MS).toISOString().split('T')[0];
+
+// India date string for "daysAgo" days before today (0 = today). IST has no DST, so plain 24h steps are exact.
+const istDateDaysAgo = (daysAgo: number) => toIstDateString(new Date(Date.now() - daysAgo * DAY_MS));
+
+// The backend sends epoch milliseconds as a string ("1760...") and new Date(string) does not read those.
+const parseTimestamp = (value: any): Date | null => {
+  if (value === null || value === undefined || value === '') return null;
+  const d = /^\d+$/.test(String(value)) ? new Date(Number(value)) : new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
+// Always shown in India time (the same time the date filters use), whatever the phone's timezone is set to.
+const formatIstTime = (d: Date) => {
+  const ist = new Date(d.getTime() + IST_OFFSET_MS);
+  const hours = ist.getUTCHours();
+  const minutes = String(ist.getUTCMinutes()).padStart(2, '0');
+  return `${hours % 12 || 12}:${minutes} ${hours >= 12 ? 'PM' : 'AM'}`;
+};
+
+const formatIstDate = (d: Date) => {
+  const ist = new Date(d.getTime() + IST_OFFSET_MS);
+  return `${ist.getUTCDate()} ${MONTHS[ist.getUTCMonth()]} ${ist.getUTCFullYear()}`;
+};
 
 const OrderHistoryScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
@@ -42,6 +71,8 @@ const OrderHistoryScreen: React.FC = () => {
   const partnerId = authData?.partnerId;
 
   const [period, setPeriod] = useState<FilterPeriod>('today');
+  const [customRange, setCustomRange] = useState<DateRange | null>(null);
+  const [rangeModalVisible, setRangeModalVisible] = useState(false);
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -59,20 +90,20 @@ const OrderHistoryScreen: React.FC = () => {
       const currentPage = isRefresh ? 0 : page;
 
       // Calculate dates based on period
-      const today = new Date();
-      let fromDateStr = '';
-      let toDateStr = toIstDateString(today);
+      // "Last N days" is a rolling window that includes today: today and the N-1 days before it.
+      let fromDateStr = istDateDaysAgo(0);
+      let toDateStr = istDateDaysAgo(0);
 
-      if (currentPeriod === 'today') {
-        fromDateStr = toIstDateString(today);
+      if (currentPeriod === 'custom' && customRange) {
+        fromDateStr = customRange.from;
+        toDateStr = customRange.to;
+      } else if (currentPeriod === 'yesterday') {
+        fromDateStr = istDateDaysAgo(1);
+        toDateStr = istDateDaysAgo(1);
       } else if (currentPeriod === 'last7') {
-        const d = new Date();
-        d.setDate(d.getDate() - 7);
-        fromDateStr = toIstDateString(d);
+        fromDateStr = istDateDaysAgo(6);
       } else if (currentPeriod === 'last14') {
-        const d = new Date();
-        d.setDate(d.getDate() - 14);
-        fromDateStr = toIstDateString(d);
+        fromDateStr = istDateDaysAgo(13);
       }
 
       const res = await deliveryPartnerService.getDeliveryPartnerHistory(partnerId, currentPage, 10, fromDateStr, toDateStr);
@@ -96,12 +127,12 @@ const OrderHistoryScreen: React.FC = () => {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [partnerId, page, period]);
+  }, [partnerId, page, period, customRange]);
 
   useEffect(() => {
     setLoading(true);
     fetchHistory(true, period);
-  }, [period, partnerId]); // Refetch when period changes
+  }, [period, partnerId, customRange]); // Refetch when period or custom range changes
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -133,6 +164,15 @@ const OrderHistoryScreen: React.FC = () => {
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
+              style={[styles.chip, period === 'yesterday' && styles.chipActive]}
+              onPress={() => setPeriod('yesterday')}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.chipText, period === 'yesterday' && styles.chipTextActive]}>
+                Yesterday
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
               style={[styles.chip, period === 'last7' && styles.chipActive]}
               onPress={() => setPeriod('last7')}
               activeOpacity={0.8}
@@ -150,9 +190,16 @@ const OrderHistoryScreen: React.FC = () => {
                 Last 14 Days
               </Text>
             </TouchableOpacity>
+            {period === 'custom' && customRange && (
+              <TouchableOpacity style={[styles.chip, styles.chipActive]} activeOpacity={0.8} onPress={() => setRangeModalVisible(true)}>
+                <Text style={[styles.chipText, styles.chipTextActive]}>
+                  {formatRangeLabel(customRange)}
+                </Text>
+              </TouchableOpacity>
+            )}
           </ScrollView>
-          <TouchableOpacity style={styles.calendarBtn} activeOpacity={1}>
-            <Calendar size={20} color="#64748B" />
+          <TouchableOpacity style={styles.calendarBtn} activeOpacity={0.7} onPress={() => setRangeModalVisible(true)}>
+            <Calendar size={20} color={period === 'custom' ? '#1D6BFC' : '#64748B'} />
           </TouchableOpacity>
         </View>
       </View>
@@ -163,21 +210,19 @@ const OrderHistoryScreen: React.FC = () => {
     const shopName = item?.orderDetails?.shopDetails?.name || 'Unknown Store';
     const orderId = item?.orderId || 'N/A';
 
-    // Formatting Date
-    const createdAt = item?.createdAt || item?.orderDetails?.creationTime;
-    let timeStr = '';
-    if (createdAt) {
-      // The backend sends epoch milliseconds as a string ("1760...") and new Date(string) does not read those.
-      const d = /^\d+$/.test(String(createdAt)) ? new Date(Number(createdAt)) : new Date(createdAt);
-      if (!Number.isNaN(d.getTime())) {
-        timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      }
-    }
-
     const customerName = item?.orderDetails?.customerName || 'Customer';
     const customerMobile = item?.orderDetails?.customerMobile || '';
     const status = item?.orderStatus || 'Unknown';
     const isDelivered = status.toUpperCase() === 'DELIVERED';
+
+    // Delivered orders show when they were delivered; every other order shows when it was created.
+    // Old delivered orders without a delivered time fall back to their last update time.
+    const createdAt = item?.createdAt || item?.orderDetails?.creationTime;
+    const deliveredAt = item?.deliveredAt || item?.updatedAt;
+    const stampDate = parseTimestamp(isDelivered ? deliveredAt : createdAt);
+    const timeStr = stampDate ? formatIstTime(stampDate) : '';
+    const dateStr = stampDate ? formatIstDate(stampDate) : '';
+    const dateLabel = isDelivered ? 'Delivered at' : 'Created at';
     // "PARTNER_ASSIGNED" -> "Partner Assigned" (shorter, so the pill leaves room for the shop name)
     const statusLabel = status
       .replace(/_/g, ' ')
@@ -203,6 +248,19 @@ const OrderHistoryScreen: React.FC = () => {
 
     return (
       <View style={styles.orderCard}>
+        {/* Time (left) and delivered/created date (right) */}
+        {stampDate && (
+          <View style={styles.stampRow}>
+            <View style={styles.stampTimeWrap}>
+              <Clock size={12} color="#64748B" />
+              <Text style={styles.stampTimeText}>{timeStr}</Text>
+            </View>
+            <Text style={styles.stampDateText} numberOfLines={1}>
+              {dateLabel} {dateStr}
+            </Text>
+          </View>
+        )}
+
         {/* Top Section */}
         <View style={styles.cardHeader}>
           <View style={styles.storeIconWrap}>
@@ -211,7 +269,7 @@ const OrderHistoryScreen: React.FC = () => {
           <View style={styles.storeInfoWrap}>
             <Text style={styles.storeName} numberOfLines={2}>{shopName}</Text>
             <Text style={styles.dateTimeText}>
-              {timeStr ? `${timeStr} • ` : ''}Order #{orderId}
+              Order #{orderId}
             </Text>
           </View>
 
@@ -291,6 +349,17 @@ const OrderHistoryScreen: React.FC = () => {
         <Text style={styles.headerTitle}>Delivery History</Text>
         <View style={{ width: 32 }} />
       </View>
+
+      <CustomDateRangeModal
+        visible={rangeModalVisible}
+        initial={customRange}
+        onApply={range => {
+          setCustomRange(range);
+          setPeriod('custom');
+          setRangeModalVisible(false);
+        }}
+        onClose={() => setRangeModalVisible(false)}
+      />
 
       {renderFilter()}
 
@@ -437,6 +506,29 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     borderWidth: 1,
     borderColor: '#E2E8F0',
+  },
+  stampRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  stampTimeWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  stampTimeText: {
+    marginLeft: 4,
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.outfitMedium,
+    color: '#475569',
+  },
+  stampDateText: {
+    flexShrink: 1,
+    marginLeft: 12,
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.outfitMedium,
+    color: '#475569',
   },
   cardHeader: {
     flexDirection: 'row',

@@ -11,6 +11,7 @@ import type { EarningsPeriod } from '../../types/earnings';
 
 const PERIODS: { key: EarningsPeriod; label: string }[] = [
   { key: 'today', label: 'Today' },
+  { key: 'yesterday', label: 'Yesterday' },
   { key: 'thisWeek', label: 'This Week' },
   { key: 'thisMonth', label: 'This Month' },
   { key: 'lifetime', label: 'Lifetime' },

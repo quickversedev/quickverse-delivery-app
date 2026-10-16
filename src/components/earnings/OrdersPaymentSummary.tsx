@@ -8,9 +8,9 @@ import {
   Info,
 } from 'lucide-react-native';
 import { FONT_FAMILY } from '../../theme/typography';
-import type { TodayOrdersSummaryV3 } from '../../types/earnings';
+import type { EarningsPeriod, TodayOrdersSummaryV3 } from '../../types/earnings';
 
-type Props = { data: TodayOrdersSummaryV3 };
+type Props = { data: TodayOrdersSummaryV3; period: EarningsPeriod };
 
 // ─── Stat card item ───────────────────────────────────────────────────────────
 interface StatCardProps {
@@ -28,7 +28,7 @@ const StatCard: React.FC<StatCardProps> = ({ icon, count, label }) => (
 );
 
 // ─── Component ────────────────────────────────────────────────────────────────
-const OrdersPaymentSummary: React.FC<Props> = ({ data }) => {
+const OrdersPaymentSummary: React.FC<Props> = ({ data, period }) => {
   const { totalOrders, prepaidOrders, codOrders, codQrOrders, cashToSubmit } = data;
 
   return (
@@ -70,7 +70,8 @@ const OrdersPaymentSummary: React.FC<Props> = ({ data }) => {
       <View style={styles.cashRow}>
         <View style={styles.cashLeft}>
           <View style={styles.cashLabelRow}>
-            <Text style={styles.cashTitle}>Cash to Submit</Text>
+            {/* The order counts follow the filter, but the cash is always today's */}
+            <Text style={styles.cashTitle}>{period === 'today' ? 'Cash to Submit' : 'Cash to Submit (Today)'}</Text>
             <Info size={13} color="#94A3B8" strokeWidth={2} style={styles.infoIcon} />
           </View>
           <Text style={styles.cashSubtitle}>
