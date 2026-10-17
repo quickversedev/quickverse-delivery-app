@@ -98,6 +98,8 @@ const EarningsSummaryCard: React.FC<Props> = ({ data, period }) => {
   const { totalEarnings, percentage, percentageStatus, payoutBalance, breakdown } = data;
   const isPositive = percentageStatus === 'positive';
   const isNegative = percentageStatus === 'negative';
+  // The comparison badge never shows more than 100%
+  const shownPercentage = Math.min(Math.abs(percentage), 100);
   // No comparison for lifetime or a custom range
   const showBadge = period !== 'lifetime' && period !== 'custom';
   const compLabel = COMPARISON_LABEL[period];
@@ -134,7 +136,7 @@ const EarningsSummaryCard: React.FC<Props> = ({ data, period }) => {
                 isPositive ? styles.badgeTextPositive : isNegative ? styles.badgeTextNegative : styles.badgeTextNeutral,
               ]}
             >
-              {isPositive ? '+' : isNegative ? '-' : ''}{Math.abs(percentage)}%{' '}
+              {isPositive ? '+' : isNegative ? '-' : ''}{shownPercentage}%{' '}
               <Text style={styles.badgeSub}>{compLabel}</Text>
             </Text>
           </View>

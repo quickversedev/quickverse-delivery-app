@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Calendar as CalendarIcon, Info, Sun, Coffee, Utensils, SunDim, Sunset, Moon, Check, Lock, X } from 'lucide-react-native';
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { FONT_FAMILY } from '../theme/typography';
 import useAuthStore from '../hooks/useAuthStore';
 import shiftService from '../services/shift.service';
@@ -25,13 +26,13 @@ import CustomToast from '../components/ui/CustomToast';
 type DayTab = 'today' | 'tomorrow';
 
 // Local date string YYYY-MM-DD (offset 0 = today, 1 = tomorrow)
+const toDateStr = (d: Date): string =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
 const getDateStr = (offset: number = 0): string => {
   const d = new Date();
   d.setDate(d.getDate() + offset);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+  return toDateStr(d);
 };
 
 const formatDateDisplay = (dateStr: string): string => {
@@ -66,6 +67,9 @@ const ShiftSelectionScreen: React.FC = () => {
   const partnerId = authData?.partnerId ?? '';
 
   const [activeTab, setActiveTab] = useState<DayTab>('today');
+  // Single date picked from the calendar icon; null means Today/Tomorrow tab
+  const [customDate, setCustomDate] = useState<string | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -81,7 +85,18 @@ const ShiftSelectionScreen: React.FC = () => {
   const [showHowItWorks, setShowHowItWorks] = useState(false);
   const [toastConfig, setToastConfig] = useState({ visible: false, message: '', duration: 3000 });
 
-  const activeDateStr = activeTab === 'today' ? TODAY_STR : TOMORROW_STR;
+  const activeDateStr = customDate ?? (activeTab === 'today' ? TODAY_STR : TOMORROW_STR);
+
+  const selectTab = (tab: DayTab) => {
+    setCustomDate(null);
+    setActiveTab(tab);
+  };
+
+  const onDatePicked = (event: DateTimePickerEvent, date?: Date) => {
+    if (Platform.OS === 'android') { setShowDatePicker(false); }
+    if (event.type === 'dismissed' || !date) { return; }
+    setCustomDate(toDateStr(date));
+  };
 
   const loadShifts = useCallback(async () => {
     if (!partnerId) return;
@@ -223,23 +238,45 @@ const ShiftSelectionScreen: React.FC = () => {
               return (
                 <TouchableOpacity
                   key={tab}
-                  style={[styles.tab, isActive && styles.tabActive]}
-                  onPress={() => setActiveTab(tab)}
+                  style={[styles.tab, isActive && !customDate && styles.tabActive]}
+                  onPress={() => selectTab(tab)}
                   activeOpacity={0.75}>
-                  <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
+                  <Text style={[styles.tabLabel, isActive && !customDate && styles.tabLabelActive]}>
                     {tab === 'today' ? 'Today' : 'Tomorrow'}
                   </Text>
-                  <Text style={[styles.tabDate, isActive && styles.tabDateActive]}>
+                  <Text style={[styles.tabDate, isActive && !customDate && styles.tabDateActive]}>
                     {formatDateDisplay(dateStr)}
                   </Text>
                 </TouchableOpacity>
               );
             })}
           </View>
-          <View style={styles.calendarIconBox}>
-            <CalendarIcon size={20} color="#64748B" />
-          </View>
+          <TouchableOpacity
+            style={[styles.calendarIconBox, customDate && styles.calendarIconBoxActive]}
+            onPress={() => setShowDatePicker(true)}
+            activeOpacity={0.7}>
+            <CalendarIcon size={20} color={customDate ? '#1D6BFC' : '#64748B'} />
+          </TouchableOpacity>
         </View>
+
+        {customDate && (
+          <Text style={styles.customDateText}>Showing shifts for {formatDateDisplay(customDate)}</Text>
+        )}
+
+        {showDatePicker && (
+          <DateTimePicker
+            value={new Date(`${activeDateStr}T00:00:00`)}
+            mode="date"
+            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+            minimumDate={new Date(`${TODAY_STR}T00:00:00`)}
+            onChange={onDatePicked}
+          />
+        )}
+        {showDatePicker && Platform.OS === 'ios' && (
+          <TouchableOpacity style={styles.datePickerDone} onPress={() => setShowDatePicker(false)}>
+            <Text style={styles.datePickerDoneText}>Done</Text>
+          </TouchableOpacity>
+        )}
 
         {/* Static Info Box */}
         <View style={styles.infoBox}>
@@ -505,6 +542,27 @@ const styles = StyleSheet.create({
     borderColor: '#E2E8F0',
     borderRadius: 12,
     backgroundColor: '#F8FAFC',
+  },
+  calendarIconBoxActive: {
+    borderColor: '#1D6BFC',
+    backgroundColor: '#EBF2FF',
+  },
+  customDateText: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    fontSize: 12,
+    fontFamily: FONT_FAMILY.outfitMedium,
+    color: '#1D6BFC',
+  },
+  datePickerDone: {
+    alignSelf: 'flex-end',
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+  },
+  datePickerDoneText: {
+    fontSize: 14,
+    fontFamily: FONT_FAMILY.outfitBold,
+    color: '#1D6BFC',
   },
 
   infoBox: {
