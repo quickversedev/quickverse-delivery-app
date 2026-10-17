@@ -31,7 +31,6 @@ import useOrderEstimates from '../hooks/useOrderEstimates';
 import {
   CALCULATING_LABEL,
   EMPTY_LABEL,
-  formatAmount,
   formatKm,
   formatRupees,
   metricsFromEstimate,
@@ -60,6 +59,7 @@ import {
   ChevronUp,
   Clock3,
   MapPin,
+  Navigation,
   Route,
   Store,
   Trophy,
@@ -521,14 +521,14 @@ const NewOrderRequestCard: React.FC<NewOrderRequestCardProps> = ({
         </View>
         <View style={styles.assignedMetricDivider} />
         <View style={styles.assignedMetric}>
-          <Text style={styles.assignedMetricCurrency}>₹</Text>
+          <Navigation size={12} color="#16A34A" />
           <Text
             style={styles.assignedMetricValue}
             numberOfLines={1}
             adjustsFontSizeToFit>
-            {formatAmount(metrics.perKm, pendingLabel)}
+            {formatKm(metrics.totalKm, pendingLabel)}
           </Text>
-          <Text style={styles.assignedMetricLabel}>Per km</Text>
+          <Text style={styles.assignedMetricLabel}>Total Dist</Text>
         </View>
       </View>
 
@@ -1001,6 +1001,9 @@ const HomeScreen: React.FC = () => {
   const partnerName = partnerProfile?.name || 'Delivery Partner';
 
   const getOrderEpochMs = (order: DeliveryPartnerOrder): number => {
+    const fromDeliveredAt = Number(order.deliveredAt);
+    if (Number.isFinite(fromDeliveredAt) && fromDeliveredAt > 0)
+      return fromDeliveredAt;
     const fromCreatedAt = Number(order.createdAt);
     if (Number.isFinite(fromCreatedAt) && fromCreatedAt > 0)
       return fromCreatedAt;

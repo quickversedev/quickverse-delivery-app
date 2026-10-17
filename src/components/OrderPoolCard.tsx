@@ -7,14 +7,13 @@ import {
   TouchableOpacity,
   ActivityIndicator,
 } from 'react-native';
-import { MapPin, Route, Store } from 'lucide-react-native';
+import { MapPin, Navigation, Route, Store } from 'lucide-react-native';
 import { FONT_FAMILY } from '../theme/typography';
 import type { PoolOrder } from '../types/pool.types';
 import type { OrderEstimate } from '../services/delivery-partner.service';
 import {
   CALCULATING_LABEL,
   EMPTY_LABEL,
-  formatAmount,
   formatKm,
   formatRupees,
   metricsFromEstimate,
@@ -250,14 +249,14 @@ const OrderPoolCard: React.FC<OrderPoolCardProps> = ({
         </View>
         <View style={styles.assignedMetricDivider} />
         <View style={styles.assignedMetric}>
-          <Text style={styles.assignedMetricCurrency}>₹</Text>
+          <Navigation size={12} color="#16A34A" />
           <Text
             style={styles.assignedMetricValue}
             numberOfLines={1}
             adjustsFontSizeToFit>
-            {formatAmount(metrics.perKm, pendingLabel)}
+            {formatKm(metrics.totalKm, pendingLabel)}
           </Text>
-          <Text style={styles.assignedMetricLabel}>Per km</Text>
+          <Text style={styles.assignedMetricLabel}>Total Dist</Text>
         </View>
       </View>
 
