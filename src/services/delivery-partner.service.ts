@@ -6,6 +6,8 @@ export type DeliveryPartnerProfile = {
   name: string;
   profileImageUrl: string | null;
   totalOrders: number;
+  /** Lifetime completed deliveries (backend `totalDeliveries`). */
+  totalDeliveries: number;
   orderSuccess: number;
   orderFailed: number;
   earnings: number | null;
@@ -282,6 +284,8 @@ type DeliveryPartnerApiResponse = {
     imageUrl?: string;
     avatarUrl?: string;
     totalOrders?: number;
+    totalDeliveries?: number;
+    acceptanceRate?: number;
     orderSuccess?: number;
     orderFailed?: number;
     earnings?: number;
@@ -292,7 +296,6 @@ type DeliveryPartnerApiResponse = {
     mobileNumber?: string | number;
     isVerified?: boolean;
     rating?: number;
-    acceptanceRate?: number;
     regionId?: any;
   };
   id?: string;
@@ -309,6 +312,7 @@ type DeliveryPartnerApiResponse = {
   imageUrl?: string;
   avatarUrl?: string;
   totalOrders?: number;
+  totalDeliveries?: number;
   orderSuccess?: number;
   orderFailed?: number;
   earnings?: number;
@@ -341,6 +345,7 @@ const normalizePartnerProfile = (
       payload?.avatarUrl ??
       null,
     totalOrders: Number(payload?.totalOrders ?? 0),
+    totalDeliveries: Number(payload?.totalDeliveries ?? payload?.totalOrders ?? 0),
     orderSuccess: Number(payload?.orderSuccess ?? 0),
     orderFailed: Number(payload?.orderFailed ?? 0),
     earnings:

@@ -56,7 +56,7 @@ const ProfileScreen: React.FC = () => {
   const isVerified = partnerProfile?.isVerified ?? false;
   
   const rating = partnerProfile?.rating ?? 0.0;
-  const deliveries = partnerProfile?.totalOrders ?? 0;
+  const deliveries = partnerProfile?.totalDeliveries ?? 0;
   const acceptance = partnerProfile?.acceptanceRate ?? 0;
 
   const handleComingSoon = () => {
@@ -85,6 +85,13 @@ const ProfileScreen: React.FC = () => {
     .map((part: string) => part[0]?.toUpperCase())
     .join('') || 'DP';
 
+  // If the stored picture cannot be loaded (e.g. S3 denies access), show the initials instead of an empty circle.
+  const [failedPhotoUrl, setFailedPhotoUrl] = React.useState<string | null>(null);
+  const photoUrl =
+    partnerProfile?.profileImageUrl && partnerProfile.profileImageUrl !== failedPhotoUrl
+      ? partnerProfile.profileImageUrl
+      : null;
+
   return (
     <View style={styles.container}>
       <ScrollView
@@ -110,14 +117,15 @@ const ProfileScreen: React.FC = () => {
         <View style={[styles.navbar, { paddingTop: insets.top + 16 }]}>
           <View style={styles.navLeft}>
             <View style={styles.navAvatarWrap}>
-              {partnerProfile?.profileImageUrl ? (
+              {photoUrl ? (
                 <Image
-                  source={{ uri: partnerProfile.profileImageUrl }}
+                  source={{ uri: photoUrl }}
                   style={styles.navAvatar}
+                  onError={() => setFailedPhotoUrl(photoUrl)}
                 />
               ) : (
                 <View style={styles.navInitialsBox}>
-                  <Text style={styles.navInitialsText}>{initials[0]}</Text>
+                  <Text style={styles.navInitialsText}>{initials}</Text>
                 </View>
               )}
             </View>
@@ -133,13 +141,14 @@ const ProfileScreen: React.FC = () => {
         <View style={styles.profileSection}>
           <View style={styles.avatarRing}>
             <View style={styles.avatarInner}>
-              {partnerProfile?.profileImageUrl ? (
+              {photoUrl ? (
                 <Image
-                  source={{ uri: partnerProfile.profileImageUrl }}
+                  source={{ uri: photoUrl }}
                   style={styles.avatarImage}
+                  onError={() => setFailedPhotoUrl(photoUrl)}
                 />
               ) : (
-                <Text style={styles.avatarInitials}>{initials[0]}</Text>
+                <Text style={styles.avatarInitials}>{initials}</Text>
               )}
             </View>
           </View>

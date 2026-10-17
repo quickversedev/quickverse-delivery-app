@@ -101,6 +101,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         name: 'Delivery Partner',
         profileImageUrl: null,
         totalOrders: 0,
+        totalDeliveries: 0,
         orderSuccess: 0,
         orderFailed: 0,
         earnings: null,
