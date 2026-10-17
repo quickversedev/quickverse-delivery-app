@@ -32,11 +32,19 @@ const PAD_BOTTOM = 24; // space below line for day labels
 const SVG_HEIGHT = CHART_HEIGHT + PAD_TOP + PAD_BOTTOM;
 const DOT_R = 4;
 const DOT_R_SELECTED = 7;
+// Horizontal room so the first and last dots (and their rings) are not drawn on the SVG edge.
+const SIDE_INSET = DOT_R_SELECTED + 5;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-const formatAmount = (v: number): string => {
-  if (v >= 1000) { return `₹${(v / 1000).toFixed(1)}k`; }
-  return `₹${v}`;
+// Exact earnings for the label: 3538 shows as ₹3538, 3538.5 as ₹3538.50 (no "k" shortening, no rounding up).
+const formatAmount = (v: number): string =>
+  Number.isInteger(v) ? `₹${v}` : `₹${v.toFixed(2)}`;
+
+// First label is left-aligned and last is right-aligned, so their text stays inside the card.
+const labelAnchor = (i: number, count: number): 'start' | 'middle' | 'end' => {
+  if (i === 0) { return 'start'; }
+  if (i === count - 1) { return 'end'; }
+  return 'middle';
 };
 
 // Build SVG smooth path through points
@@ -64,9 +72,10 @@ const Last7DaysChart: React.FC<Props> = ({ data }) => {
   const points = useMemo(() => {
     if (chartData.length === 0) { return []; }
     const max = Math.max(...chartData.map(d => d.amount), 1);
-    const step = CHART_WIDTH / Math.max(chartData.length - 1, 1);
+    const usableWidth = CHART_WIDTH - SIDE_INSET * 2;
+    const step = usableWidth / Math.max(chartData.length - 1, 1);
     return chartData.map((d, i) => ({
-      x: i === 0 ? 0 : i * step,
+      x: SIDE_INSET + i * step,
       y: PAD_TOP + CHART_HEIGHT - (d.amount / max) * CHART_HEIGHT * 0.88,
       amount: d.amount,
       day: d.day,
@@ -189,7 +198,7 @@ const Last7DaysChart: React.FC<Props> = ({ data }) => {
                       fontSize={isSelected ? 12 : 10}
                       fontWeight={isSelected ? '700' : '500'}
                       fill={isSelected ? '#1D6BFC' : '#94A3B8'}
-                      textAnchor="middle"
+                      textAnchor={labelAnchor(i, points.length)}
                     >
                       {formatAmount(pt.amount)}
                     </SvgText>
@@ -200,7 +209,7 @@ const Last7DaysChart: React.FC<Props> = ({ data }) => {
                       fontSize={11}
                       fontWeight={isSelected ? '700' : '400'}
                       fill={isSelected ? '#1D6BFC' : '#94A3B8'}
-                      textAnchor="middle"
+                      textAnchor={labelAnchor(i, points.length)}
                     >
                       {chartData[i].day}
                     </SvgText>
